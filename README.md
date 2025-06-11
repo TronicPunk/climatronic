@@ -7,7 +7,7 @@ The Climatronic is an electronic module for monitoring and controlling indoor cl
 Up to eight sensors can be connected via a bus system to measure environmental parameters such as temperature, humidity, air pressure, and CO₂ concentration.
 Eight outputs are available to control actuators for ventilation, humidification, heating, or cooling.
 
-<img src="images/block_diagram.png" width="400" alt="Climatronic overview">
+<img src="images/block_diagram.png" width="600" alt="Climatronic overview">
 
 ### Features
 
@@ -17,7 +17,7 @@ Eight outputs are available to control actuators for ventilation, humidification
 - two digital PWM outputs with 1..10KHz PWM frequency and 0.1% duty cycle resolution
   e.g. for fan speed control
 - tiny web interface to read status information and setup control parameters
-- MQTT support to privide measurement and output values for data logging
+- MQTT support to provide measurement and output values for data logging
 
 #### Important links:
 For more information, please refer to:
