@@ -1,0 +1,20 @@
+idf_component_register(
+   SRCS
+      "scd4x_interface.c"
+      "embedded-i2c-scd4x/scd4x_i2c.c"
+      "embedded-i2c-scd4x/sensirion_i2c.c"
+      "embedded-i2c-scd4x/sensirion_i2c_hal.c"      
+      "embedded-i2c-scd4x/sensirion_common.c"      
+   INCLUDE_DIRS
+      "."
+      "embedded-i2c-scd4x"
+   REQUIRES
+      sensor
+   PRIV_REQUIRES
+      driver
+      iic
+      iic_mux
+      esp_timer
+      timer
+      main
+)

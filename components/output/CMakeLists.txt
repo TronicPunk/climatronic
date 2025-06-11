@@ -1,0 +1,9 @@
+idf_component_register(
+   SRCS
+      "output.c"
+   INCLUDE_DIRS
+      "."
+   PRIV_REQUIRES
+      driver
+      esp_timer
+)

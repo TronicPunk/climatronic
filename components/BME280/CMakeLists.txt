@@ -1,0 +1,16 @@
+idf_component_register(
+   SRCS
+      "bme280_interface.c"
+      "BME280_SensorAPI/bme280.c"
+   INCLUDE_DIRS
+      "."
+      "BME280_SensorAPI" 
+   REQUIRES
+      sensor
+   PRIV_REQUIRES
+      driver
+      iic
+      iic_mux
+      esp_timer
+      timer
+)

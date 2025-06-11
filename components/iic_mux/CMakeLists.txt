@@ -1,0 +1,9 @@
+idf_component_register(
+   SRCS
+      "iic_mux.c"
+   INCLUDE_DIRS
+      "."
+   PRIV_REQUIRES
+      iic
+      driver
+)

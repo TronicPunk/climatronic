@@ -1,0 +1,14 @@
+# ESP-IDF Build files
+/build/
+*.bin
+*.elf
+*.map
+
+# VSCode settings
+.vscode/
+
+# ESP-IDF specific
+sdkconfig.old
+
+# Projekt experimental
+/test/

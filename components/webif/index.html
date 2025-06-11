@@ -1,0 +1,140 @@
+<!DOCTYPE html><html>
+<head><meta charset="UTF-8">
+<title>Klimaregelung</title>
+<style>
+  .slider-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .slider-row label {
+    width: 150px;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+  }
+  .slider-row span {
+    width: 50px;
+    text-align: right;
+    margin-left: 10px;
+  }
+</style>
+</head><body>
+<h1>Klimaregelung</h1>
+<div id='info'>Lade Daten...</div>
+<br>
+<div>Letzte Aktualisierung: <span id="timestamp">--:--:--</span></div>
+<br>
+<h2>Ausgänge</h2>
+<label for="modeSwitch">Betriebsart:</label>
+<select id="modeSwitch" onchange="setMode()">
+   <option value="off">Aus</option>
+   <option value="manual">Manuell</option>
+   <option value="auto">Automatik</option>
+</select>
+<br><br>
+<div id="sliders-container"></div>
+
+<script>
+let outputChannels = 8;
+let currentMode = "auto";
+
+function createSliders(count) {
+  const container = document.getElementById("sliders-container");
+
+  for (let i = 0; i < count; i++) {
+    const row = document.createElement("div");
+    row.className = "slider-row";
+
+    const label = document.createElement("label");
+    label.textContent = "Ausgang " + (i + 1);
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.value = "50";
+    slider.id = "slider" + i;
+    slider.disabled = true;
+    slider.oninput = () => { setOutput(i, slider.value); }
+
+    const valueDisplay = document.createElement("span");
+    valueDisplay.id = "value" + i;
+    valueDisplay.textContent = "50 %";
+
+    row.appendChild(label);
+    row.appendChild(slider);
+    row.appendChild(valueDisplay);
+    container.appendChild(row);
+  }
+}
+
+function setOutput(outchn, val) {
+  document.getElementById("value" + outchn).textContent = val + " %";
+  const slider = document.getElementById("slider" + outchn);
+  slider.value = val;
+  slider.disabled = (currentMode !== "manual");
+  fetch("/set_output", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ channel: outchn, value: parseInt(val) })
+  });
+}
+
+function setMode() {
+  currentMode = document.getElementById("modeSwitch").value;
+  for (let i = 0; i < outputChannels; i++) {
+    let value = document.getElementById("slider" + i).value;
+    if (currentMode === "off") { value = 0; }
+    setOutput(i, value);
+  }
+  fetch("/set_mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: currentMode })
+  });
+}
+
+function fetchSensorData() {
+  fetch('/api/sensor')
+    .then(response => response.json())
+    .then(data => updateSensor(data))
+    .catch(error => console.error('Fehler beim Laden der Sensor-Daten:', error));
+}
+function updateSensor(data) {
+  document.getElementById('info').innerHTML =
+    'Temperatur: ' + data.temp + ' °C<br>' +
+    'Luftfeuchtigkeit: ' + data.hum + ' %<br>' +
+    'Luftdruck: ' + data.press + ' hPa';
+  document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
+}
+
+function fetchOutputData() {
+  fetch('/api/output')
+    .then(response => response.json())
+    .then(data => updateOutput(data))
+    .catch(error => console.error('Fehler beim Laden der Output-Daten:', error));
+}
+function updateOutput(data) {
+  currentMode = data.mode;
+  document.getElementById('modeSwitch').value = currentMode;
+  for (let i = 0; i < outputChannels; i++) {
+    const slider = document.getElementById("slider" + i);
+    let pwm = data.channels[i];
+    slider.value = pwm;
+    document.getElementById("value" + i).textContent = pwm + " %";
+    slider.disabled = (currentMode !== "manual");
+  }
+}
+
+function fetchData() {
+  fetchSensorData();
+  fetchOutputData();
+}
+
+createSliders(outputChannels);
+setInterval(fetchData, 2000);
+fetchData();
+
+</script>
+</body></html>

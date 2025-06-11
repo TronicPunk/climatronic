@@ -1,0 +1,11 @@
+idf_component_register(
+   SRCS
+      "sensor.c"
+      "sensor_data.c"
+   INCLUDE_DIRS
+      "."
+   PRIV_REQUIRES
+      BME280
+      BME68x
+      SCD4x
+)
