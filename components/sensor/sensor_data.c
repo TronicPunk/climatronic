@@ -9,7 +9,7 @@
 #include "sensor_data.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define SENSOR_COUNT    (2u)  // number of connected sensors
+#define SENSOR_COUNT    (6u)  // number of connected sensors
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
@@ -21,8 +21,21 @@
 static T_sensor_instance mat_SensorInstance[SENSOR_COUNT];
 
 // array of const sensor descriptors
-static const T_sensor_def mat_SensorList[3] =
+static const T_sensor_def mat_SensorList[SENSOR_COUNT] =
 {
+   {
+      .t_SensorInfo =
+      {
+         .pt_Sensor = &gt_BME680_type,                // Sensor type BME680
+         .s_Name = "Aufzucht1_Sensor1",               // Sensor name or location
+         .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
+         .u8_IicBus = 0u,                             // IIC bus number
+         .u8_IicAddr = BME68X_I2C_ADDR_HIGH           // IIC bus address
+      },
+      .pt_SensorApi = &gt_BME68x_api,                 // pointer to sensor API
+      .u32_UpdateRateUs = 3000000u,                   // update rate 3sec
+      .pt_SensorInstance = &mat_SensorInstance[0],    // pointer to sensor instance data storage
+   },
    {
       .t_SensorInfo =
       {
@@ -34,19 +47,6 @@ static const T_sensor_def mat_SensorList[3] =
       },
       .pt_SensorApi = &gt_SCD4x_api,                  // pointer to sensor API
       .u32_UpdateRateUs = 5000000u,                   // update rate 5sec
-      .pt_SensorInstance = &mat_SensorInstance[0],    // pointer to sensor instance data storage
-   },
-   {
-      .t_SensorInfo =
-      {
-         .pt_Sensor = &gt_BME280_type,                // Sensor type BME280
-         .s_Name = "Aufzucht1_Sensor1",               // Sensor name or location
-         .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
-         .u8_IicBus = 0u,                             // IIC bus number
-         .u8_IicAddr = BME280_I2C_ADDR_PRIM           // IIC bus address
-      },
-      .pt_SensorApi = &gt_BME280_api,                 // pointer to sensor API
-      .u32_UpdateRateUs = 1000000u,                   // update rate 1sec
       .pt_SensorInstance = &mat_SensorInstance[1],    // pointer to sensor instance data storage
    },
    {
@@ -55,12 +55,51 @@ static const T_sensor_def mat_SensorList[3] =
          .pt_Sensor = &gt_BME680_type,                // Sensor type BME680
          .s_Name = "Aufzucht1_Sensor2",               // Sensor name or location
          .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
-         .u8_IicBus = 0u,                             // IIC bus number
+         .u8_IicBus = 1u,                             // IIC bus number
          .u8_IicAddr = BME68X_I2C_ADDR_HIGH           // IIC bus address
       },
       .pt_SensorApi = &gt_BME68x_api,                 // pointer to sensor API
       .u32_UpdateRateUs = 3000000u,                   // update rate 3sec
       .pt_SensorInstance = &mat_SensorInstance[2],    // pointer to sensor instance data storage
+   },
+   {
+      .t_SensorInfo =
+      {
+         .pt_Sensor = &gt_SCD41_type,                 // Sensor type SCD41
+         .s_Name = "Aufzucht1_CO2_Sensor2",           // Sensor name or location
+         .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
+         .u8_IicBus = 1u,                             // IIC bus number
+         .u8_IicAddr = SCD41_I2C_ADDR_62              // IIC bus address
+      },
+      .pt_SensorApi = &gt_SCD4x_api,                  // pointer to sensor API
+      .u32_UpdateRateUs = 5000000u,                   // update rate 5sec
+      .pt_SensorInstance = &mat_SensorInstance[3],    // pointer to sensor instance data storage
+   },
+   {
+      .t_SensorInfo =
+      {
+         .pt_Sensor = &gt_BME280_type,                // Sensor type BME280
+         .s_Name = "Zuluft_Sensor1",                  // Sensor name or location
+         .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
+         .u8_IicBus = 2u,                             // IIC bus number
+         .u8_IicAddr = BME280_I2C_ADDR_PRIM           // IIC bus address
+      },
+      .pt_SensorApi = &gt_BME280_api,                 // pointer to sensor API
+      .u32_UpdateRateUs = 1000000u,                   // update rate 1sec
+      .pt_SensorInstance = &mat_SensorInstance[4],    // pointer to sensor instance data storage
+   },
+   {
+      .t_SensorInfo =
+      {
+         .pt_Sensor = &gt_BME280_type,                // Sensor type BME280
+         .s_Name = "Aussen_Sensor1",                  // Sensor name or location
+         .u32_IicSclFreq = 400000u,                   // IIC SCL frequency
+         .u8_IicBus = 3u,                             // IIC bus number
+         .u8_IicAddr = BME280_I2C_ADDR_PRIM           // IIC bus address
+      },
+      .pt_SensorApi = &gt_BME280_api,                 // pointer to sensor API
+      .u32_UpdateRateUs = 1000000u,                   // update rate 1sec
+      .pt_SensorInstance = &mat_SensorInstance[5],    // pointer to sensor instance data storage
    }
 };
 

@@ -56,7 +56,7 @@ static int32_t m_test_output(void);
 static void m_test_output_print_channel(const uint32_t ou32_Channel, const uint8_t ou8_EditFlag);
 static void m_test_output_disable_all(const uint32_t ou32_EditChannel);
 static void m_configure_led(void);
-static void m_blink_led(void);
+static void m_toggle_led(void);
 
 
 /* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
@@ -71,7 +71,7 @@ const T_Menu gt_MenuSub =
    NULL,          // menu exit function
    1,             // number of menu entries
    {
-      (void *)&m_blink_led,   // submenu system test
+      (void *)&m_toggle_led,   // submenu system test
    }
 };
 
@@ -206,7 +206,7 @@ static void m_test_output_print_channel(const uint32_t ou32_Channel, const uint8
    int32_t s32_Pwm;
    static const char* as_EditFlag[2] = { "   " , " * " };
    uint8_t u8_FlagIdx = (ou8_EditFlag >= 1u) ? 1u : 0u;
-  
+
    output_get_pwm(ou32_Channel, &s32_Pwm);
    set_cursor(0u, ou32_Channel + 5u);
    printf("%sOUTPUT%lu: PWM = %4ld %%\r\n", as_EditFlag[u8_FlagIdx], ou32_Channel, (s32_Pwm + 5)/10);
@@ -225,14 +225,13 @@ static void m_test_output_disable_all(const uint32_t ou32_EditChannel)
 
 static void m_configure_led(void)
 {
-    ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
     s_led_state = 0;
     gpio_reset_pin(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
-static void m_blink_led(void)
+static void m_toggle_led(void)
 {
     /* Toggle the LED state */
     s_led_state = !s_led_state;
@@ -244,7 +243,7 @@ void app_main(void)
 {
    esp_err_t err = ESP_FAIL;
    T_sensor_data t_SensorData;
-   uint8_t u8_SensorCnt = sensor_get_count();
+   uint16_t u16_SensorCnt = sensor_get_count();
 
    // force linkage of sensor components
    __force_link_bme280();
@@ -252,10 +251,6 @@ void app_main(void)
    __force_link_scd4x();
 
    ESP_ERROR_CHECK(nvs_flash_init());
-   wifi_connect();
-   start_mdns_service();
-   start_webserver();
-
    m_configure_led();
    serial_init();
 
@@ -271,14 +266,14 @@ void app_main(void)
 
 
    printf("\r\n");
-   printf("Sensor Interface: %u sensor(s) found\r\n", u8_SensorCnt);
+   printf("Sensor Interface: %u sensor(s) found\r\n", u16_SensorCnt);
    // init all sensors
-   for (uint8_t u8_SensorIdx =0; u8_SensorIdx < u8_SensorCnt; u8_SensorIdx++)
+   for (uint16_t u16_SensorIdx = 0; u16_SensorIdx < u16_SensorCnt; u16_SensorIdx++)
    {
       const T_sensor_info * pt_SensorInfo;
-      sensor_get_info(u8_SensorIdx, &pt_SensorInfo);
-      printf("Sensor %u: Type %s at I2C bus %u initialization ", u8_SensorIdx, pt_SensorInfo->pt_Sensor->s_Type, pt_SensorInfo->u8_IicBus);
-      err = sensor_init(u8_SensorIdx);
+      sensor_get_info(u16_SensorIdx, &pt_SensorInfo);
+      printf("Sensor %u: Type %s at I2C bus %u initialization ", u16_SensorIdx, pt_SensorInfo->pt_Sensor->s_Type, pt_SensorInfo->u8_IicBus);
+      err = sensor_init(u16_SensorIdx);
       if (err == ESP_OK)
       {
          printf("OK\r\n");
@@ -292,38 +287,27 @@ void app_main(void)
    if (err == ESP_OK)
    {
       printf("\r\n");
-      while (1)
+      while (TRUE)      // test loop, process time 1sec
       {
-         bool q_SCD4x_Ready = false;
          delay_us(1000000u);
 
-         for (uint32_t i=0; i<2; i++)
+         for (uint16_t u16_SensorIdx = 0; u16_SensorIdx < u16_SensorCnt; u16_SensorIdx++)
          {
             const T_sensor_info * pt_SensorInfo;
-            sensor_get_info(i, &pt_SensorInfo);
-            err = sensor_process_data(i);
+            sensor_get_info(u16_SensorIdx, &pt_SensorInfo);
+            err = sensor_process_data(u16_SensorIdx);
             if ((err != ESP_ERR_NOT_FINISHED) && (err != ESP_OK))
             {
                printf("%s (%s): ", pt_SensorInfo->s_Name, pt_SensorInfo->pt_Sensor->s_Type);
-               printf("sensor_process_data(%lu) error = %u\r\n\n", i, err);
+               printf("sensor_process_data(%u) error = %u\r\n\n", u16_SensorIdx, err);
             }
 
-            if ((i == 1) && (err == ESP_OK))
+            if (err == ESP_OK)
             {
-               q_SCD4x_Ready = true;
-            }
-         }
-
-         if (q_SCD4x_Ready == true)
-         {
-            for (uint32_t i=0; i<2; i++)
-            {
-               const T_sensor_info * pt_SensorInfo;
-               sensor_get_info(i, &pt_SensorInfo);
-               err = sensor_get_data(i, &t_SensorData);
+               err = sensor_get_data(u16_SensorIdx, &t_SensorData);
 
                printf("%s (%s): ", pt_SensorInfo->s_Name, pt_SensorInfo->pt_Sensor->s_Type);
-               printf("sensor_get_data(%lu) = %u\r\n", i, err);
+               printf("sensor_get_data(%u) = %u\r\n", u16_SensorIdx, err);
                printf("Temperature    %5.1f °C\r\n", t_SensorData.f32_Temperature);
                printf("Pressure       %6.1f hPa\r\n", t_SensorData.f32_Pressure*0.01f);
                printf("Humidity       %5.1f %%\r\n", t_SensorData.f32_Humidity);
@@ -335,16 +319,15 @@ void app_main(void)
    }
 
 /*
-   err = sensor_get_data(1, &t_SensorData);
-   printf("sensor_get_data(0) = %u\r\n", err);
-   printf("Temperature %5.1f°C\r\n", t_SensorData.f32_Temperature);
-   printf("Pressure    %6.1fhPa\r\n", t_SensorData.f32_Pressure*0.01f);
-   printf("Humidity    %5.1f%%\r\n", t_SensorData.f32_Humidity);
-   printf("\r\n");
+   // init the web interface
+   wifi_connect();
+   start_mdns_service();
+   start_webserver();
 */
+
    while (true)
    {
       menu_entry(&gt_MenuMain);
-      delay_us(50000u);      
+      delay_us(50000u);
    }
 }
