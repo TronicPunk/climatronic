@@ -1,7 +1,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 /*!
    \file
-   \brief provide a timer functions like delay or timer callbacks for data process tasks   
+   \brief provide a timer functions like delay or timer callbacks for data process tasks
 */
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -37,4 +37,12 @@ void delay_us(const uint32_t ou32_TimeUs)
    {
       // wait remaining delay in exact us
    }
+}
+
+/**
+ * get system time in seconds since boot
+ */
+uint32_t get_time_sec(void)
+{
+   return (uint32_t)(esp_timer_get_time() / 1000000uL);
 }

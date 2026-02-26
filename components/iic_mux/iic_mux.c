@@ -14,7 +14,7 @@
 #define IIC_MUX_RST_GPIO         GPIO_NUM_14    // IIC MUX reset GPIO
 #define IIC_MUX_ADDR             (0x70u)        // IIC multiplexer device address
 #define IIC_MUX_SCL_FREQ         (400000u)      // IIC multiplexer SCL frequency
-#define IIC_MUX_SCL_TIMEOUT_US   (50000u)       // IIC multiplexer SCL timeout in us
+#define IIC_MUX_SCL_TIMEOUT_US   (10000u)       // IIC multiplexer SCL timeout in us
 #define IIC_MUX_TIMEOUT_MS       (50u)          // IIC multiplexer transaction timeout in ms
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
@@ -56,7 +56,7 @@ esp_err_t iic_mux_init(void)
       gpio_set_direction(IIC_MUX_RST_GPIO, GPIO_MODE_OUTPUT);
 
       // reset the IIC multiplexer
-      iic_mux_reset();    
+      iic_mux_reset();
 
       // init IIC multiplexer device
       t_Err = i2c_master_bus_add_device(t_IicBusHandle, &t_IicDev_Mux, &mt_IicDevHandle_Mux);
@@ -75,7 +75,7 @@ void iic_mux_reset(void)
    // set the /RST pin low for at least 6ns (at least 2 cycles at 240MHz CPU clock)
    asm volatile("nop");
    asm volatile("nop");
-   asm volatile("nop");   
+   asm volatile("nop");
    gpio_set_level(IIC_MUX_RST_GPIO, 1u);
 
    mu8_MuxChannel = IIC_MUX_CHANNEL_INVALID;
@@ -98,7 +98,7 @@ esp_err_t iic_mux_set(const uint8_t ou8_Channel)
          mu8_MuxChannel = ou8_Channel;
       }
    }
-   
+
    return t_Err;
 }
 

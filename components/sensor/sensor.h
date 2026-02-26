@@ -27,19 +27,23 @@
 #define SENSOR_MODE_CYCLIC_MEASURE     (0x02u)        // optional  operation mode
 #define SENSOR_MODE_COUNT              (3u)           // max. number of sensor operation modes
 
-#define SENSOR_VALUE_INVALID           (-1.0E6f)      // invalid measurement value
+#define SENSOR_VALUE_INVALID           (-500.0f)      // invalid measurement value
 #define SENSOR_TIMESTAMP_INVALID       (0xFFFFFFFFuL) // invalid measurement timestamp
+
+#define SENSOR_COMMAND_GET_STATE       (0x0000u)      // read command state
+#define SENSOR_COMMAND_RESET           (0x0001u)      // reset sensor (TBD)
+#define SENSOR_COMMAND_CALIBRATE_CO2   (0x0002u)      // calibrate CO2 sensor
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
 typedef struct
 {
    float f32_Temperature;     // temperatur in degree centigrade
-   float f32_Pressure;        // pressure in Pa
+   float f32_Pressure;        // pressure in hPa
    float f32_Humidity;        // relative humidity in per cent
    float f32_CO2;             // CO2 concentration in PPM
    float f32_IAQ;             // air qualitiy index
-   uint32_t u32_AgeSec;       // age of sensor data in seconds
+   uint32_t u32_TimeStampSec; // sensor data timestamp (system time in seconds)
 } T_sensor_data;
 
 typedef struct
@@ -52,7 +56,7 @@ typedef struct
 {
    const T_sensor_type* pt_Sensor;  // sensor type info
    const char * s_Name;             // sensor name
-   uint32_t u32_IicSclFreq;         // IIC SCL frequency
+   uint32_t u32_IicFreq;            // IIC clock frequency
    uint8_t u8_IicBus;               // sensor IIC bus number
    uint8_t u8_IicAddr;              // sensor IIC bus address
 } T_sensor_info;
@@ -61,12 +65,13 @@ typedef struct
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
-uint16_t  sensor_get_count(void);
-esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, const T_sensor_info ** opt_SensorInfo);
-esp_err_t sensor_init(const uint16_t ou16_SensorIdx);
-esp_err_t sensor_command(const uint16_t ou16_SensorIdx, const uint16_t ou16_Command);
+esp_err_t sensor_init_task(void);   // init the sensor measurement process
+esp_err_t sensor_detect(void);      // scan all I2C busses and init found sensors
+uint16_t  sensor_get_count(void);   // get number of initialized sensors
+esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const opt_SensorInfo);
 esp_err_t sensor_process_data(const uint16_t ou16_SensorIdx);
-esp_err_t sensor_get_data(const uint16_t ou16_SensorIdx, T_sensor_data * opt_SensorData);
-void sensor_set_data_invalid(T_sensor_data * const opt_SensorData);
+esp_err_t sensor_get_data(const uint16_t ou16_SensorIdx, T_sensor_data * const opt_SensorData);
+esp_err_t sensor_command(const uint16_t ou16_SensorIdx, const uint16_t ou16_Command, uint32_t * const  opu32_Parameter);
+void      sensor_set_data_invalid(T_sensor_data * const opt_SensorData);
 
 #endif /* SENSOR_H */

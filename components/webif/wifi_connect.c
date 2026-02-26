@@ -9,9 +9,9 @@
 #include "mdns.h"
 
 
-#define WIFI_SSID       "<tbd>"
-#define WIFI_PASS       "<tbd>"
-#define ESP32_HOST_NAME "climatronic"
+#define WIFI_SSID       "WLAN_ADS24"
+#define WIFI_PASS       "08652967250348646671"
+#define ESP32_HOST_NAME "clima_control"
 #define WIFI_CONNECTED_BIT BIT0
 
 static EventGroupHandle_t wifi_event_group;

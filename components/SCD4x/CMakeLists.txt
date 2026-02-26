@@ -3,8 +3,8 @@ idf_component_register(
       "scd4x_interface.c"
       "embedded-i2c-scd4x/scd4x_i2c.c"
       "embedded-i2c-scd4x/sensirion_i2c.c"
-      "embedded-i2c-scd4x/sensirion_i2c_hal.c"      
-      "embedded-i2c-scd4x/sensirion_common.c"      
+      "embedded-i2c-scd4x/sensirion_i2c_hal.c"
+      "embedded-i2c-scd4x/sensirion_common.c"
    INCLUDE_DIRS
       "."
       "embedded-i2c-scd4x"

@@ -170,7 +170,7 @@ esp_err_t output_init(void)
             ledc_channel.gpio_num = pt_OutDef->t_OutGpio;
             ledc_channel.channel = pt_OutDef->u8_LEDC_Chn;
             ledc_channel.hpoint = pt_OutDef->u32_PhaseOffset;
-            
+
             ledc_channel_config(&ledc_channel);
          }
 

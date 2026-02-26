@@ -9,6 +9,7 @@ idf_component_register(
       esp_http_server
       nvs_flash
       mdns
+      sensor
       output
 )
 

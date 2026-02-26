@@ -1,30 +1,60 @@
-<!DOCTYPE html><html>
-<head><meta charset="UTF-8">
-<title>Klimaregelung</title>
-<style>
-  .slider-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-  .slider-row label {
-    width: 150px;
-  }
-  .slider-row input[type="range"] {
-    flex: 1;
-  }
-  .slider-row span {
-    width: 50px;
-    text-align: right;
-    margin-left: 10px;
-  }
-</style>
-</head><body>
-<h1>Klimaregelung</h1>
-<div id='info'>Lade Daten...</div>
+<!DOCTYPE html>
+<html>
+<head>
+   <meta charset="UTF-8">
+   <title>Clima-Control</title>
+   <style>
+      table {
+         border-collapse: collapse;
+         width: 100%;
+      }
+      th, td {
+         border: 1px solid #ccc;
+         padding: 8px;
+         text-align: center;
+      }
+      th {
+         background-color: #f0f0f0;
+      }
+      .slider-row {
+         display: flex;
+         align-items: center;
+         margin-bottom: 12px;
+      }
+      .slider-row label {
+         width: 150px;
+      }
+      .slider-row input[type="range"] {
+         flex: 0 1 150px;
+      }
+      .slider-row span {
+         width: 50px;
+         text-align: right;
+         margin-left: 10px;
+      }
+   </style>
+</head>
+<body>
+<h1>Clima-Control Monitor</h1>
+<h2>Sensordaten</h2>
+<table id="sensorTable">
+   <thead>
+      <tr>
+         <th>Sensor ID</th>
+         <th>Bus</th>
+         <th>Typ</th>
+         <th>Temperatur (°C)</th>
+         <th>Luftdruck (hPa)</th>
+         <th>Feuchtigkeit (%)</th>
+         <th>CO₂ (ppm)</th>
+      </tr>
+   </thead>
+   <tbody>
+   </tbody>
+</table>
 <br>
 <div>Letzte Aktualisierung: <span id="timestamp">--:--:--</span></div>
-<br>
+<hr>
 <h2>Ausgänge</h2>
 <label for="modeSwitch">Betriebsart:</label>
 <select id="modeSwitch" onchange="setMode()">
@@ -36,8 +66,9 @@
 <div id="sliders-container"></div>
 
 <script>
-let outputChannels = 8;
-let currentMode = "auto";
+let SensorCount = -1;
+let OutputChannels = 8;
+let CurrentMode = "auto";
 
 function createSliders(count) {
   const container = document.getElementById("sliders-container");
@@ -69,11 +100,59 @@ function createSliders(count) {
   }
 }
 
+async function fetchSensorData() {
+  try {
+    const response = await fetch('/api/sensors');
+    const data = await response.json();
+    updateSensorData(data);
+  } catch(error) {
+    console.error('Fehler beim Laden der Sensor-Daten:', error);
+  }
+}
+function updateSensorData(data) {
+   const tableBody = document.querySelector("#sensorTable tbody");
+   tableBody.innerHTML = ""; // alte Daten löschen
+   data.sensors.forEach(sensor => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+         <td>${sensor.name}</td>
+         <td>${sensor.bus}</td>
+         <td>${sensor.type}</td>
+         <td>${format(sensor.temp, 1)}</td>
+         <td>${format(sensor.pres, 1)}</td>
+         <td>${format(sensor.humi, 1)}</td>
+         <td>${format(sensor.co2, 0)}</td>
+      `;
+      tableBody.appendChild(row);
+   });
+  document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
+}
+function format(value, format) {
+    return value != null ? value.toFixed(format) : "-";
+}
+function fetchOutputData() {
+  fetch('/api/output')
+    .then(response => response.json())
+    .then(data => updateOutput(data))
+    .catch(error => console.error('Fehler beim Laden der Output-Daten:', error));
+}
+function updateOutput(data) {
+  CurrentMode = data.mode;
+  document.getElementById('modeSwitch').value = CurrentMode;
+  for (let i = 0; i < OutputChannels; i++) {
+    const slider = document.getElementById("slider" + i);
+    let pwm = data.channels[i];
+    slider.value = pwm;
+    document.getElementById("value" + i).textContent = pwm + " %";
+    slider.disabled = (CurrentMode !== "manual");
+  }
+}
+
 function setOutput(outchn, val) {
   document.getElementById("value" + outchn).textContent = val + " %";
   const slider = document.getElementById("slider" + outchn);
   slider.value = val;
-  slider.disabled = (currentMode !== "manual");
+  slider.disabled = (CurrentMode !== "manual");
   fetch("/set_output", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,49 +161,17 @@ function setOutput(outchn, val) {
 }
 
 function setMode() {
-  currentMode = document.getElementById("modeSwitch").value;
-  for (let i = 0; i < outputChannels; i++) {
+  CurrentMode = document.getElementById("modeSwitch").value;
+  for (let i = 0; i < OutputChannels; i++) {
     let value = document.getElementById("slider" + i).value;
-    if (currentMode === "off") { value = 0; }
+    if (CurrentMode === "off") { value = 0; }
     setOutput(i, value);
   }
   fetch("/set_mode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: currentMode })
+    body: JSON.stringify({ mode: CurrentMode })
   });
-}
-
-function fetchSensorData() {
-  fetch('/api/sensor')
-    .then(response => response.json())
-    .then(data => updateSensor(data))
-    .catch(error => console.error('Fehler beim Laden der Sensor-Daten:', error));
-}
-function updateSensor(data) {
-  document.getElementById('info').innerHTML =
-    'Temperatur: ' + data.temp + ' °C<br>' +
-    'Luftfeuchtigkeit: ' + data.hum + ' %<br>' +
-    'Luftdruck: ' + data.press + ' hPa';
-  document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
-}
-
-function fetchOutputData() {
-  fetch('/api/output')
-    .then(response => response.json())
-    .then(data => updateOutput(data))
-    .catch(error => console.error('Fehler beim Laden der Output-Daten:', error));
-}
-function updateOutput(data) {
-  currentMode = data.mode;
-  document.getElementById('modeSwitch').value = currentMode;
-  for (let i = 0; i < outputChannels; i++) {
-    const slider = document.getElementById("slider" + i);
-    let pwm = data.channels[i];
-    slider.value = pwm;
-    document.getElementById("value" + i).textContent = pwm + " %";
-    slider.disabled = (currentMode !== "manual");
-  }
 }
 
 function fetchData() {
@@ -132,9 +179,9 @@ function fetchData() {
   fetchOutputData();
 }
 
-createSliders(outputChannels);
+createSliders(OutputChannels);
 setInterval(fetchData, 2000);
 fetchData();
-
 </script>
-</body></html>
+</body>
+</html>

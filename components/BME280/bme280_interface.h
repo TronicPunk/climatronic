@@ -20,8 +20,7 @@
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
 /* -- Global Variables ---------------------------------------------------------------------------------------------- */
-extern const T_sensor_type gt_BME280_type;   // delivers sensor type information
-extern const T_sensor_api gt_BME280_api;     // delivers common sensor API
+extern const T_sensor_descriptor gt_BME280_descriptor;   // delivers the sensor description
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
