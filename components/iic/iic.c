@@ -11,8 +11,8 @@
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 #define IIC_PORT                 I2C_NUM_0      // ESP32 IIC port
-#define IIC_SDA_GPIO             GPIO_NUM_21    // IIC SDA GPIO
-#define IIC_SCL_GPIO             GPIO_NUM_22    // IIC SDA GPIO
+#define IIC_GPIO_SDA             GPIO_NUM_21    // IIC SDA GPIO
+#define IIC_GPIO_SCL             GPIO_NUM_22    // IIC SDA GPIO
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
@@ -33,13 +33,13 @@ esp_err_t iic_init(void)
    static const i2c_master_bus_config_t i2c_mst_config =
    {
       .i2c_port = IIC_PORT,
-      .sda_io_num = IIC_SDA_GPIO,
-      .scl_io_num = IIC_SCL_GPIO,
+      .sda_io_num = IIC_GPIO_SDA,
+      .scl_io_num = IIC_GPIO_SCL,
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .glitch_ignore_cnt = 7u,
       .intr_priority = 0,
       .flags.enable_internal_pullup = true,
-      .flags.allow_pd = false      
+      .flags.allow_pd = false
    };
 
    // init IIC master bus

@@ -5,7 +5,7 @@ idf_component_register(
       "."
    PRIV_REQUIRES
       nvs_flash
-      driver
+      inout
       iic
       iic_mux
       sensor

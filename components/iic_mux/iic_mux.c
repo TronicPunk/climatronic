@@ -11,7 +11,7 @@
 #include "driver/gpio.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define IIC_MUX_RST_GPIO         GPIO_NUM_14    // IIC MUX reset GPIO
+#define IIC_MUX_GPIO_RST         GPIO_NUM_14    // IIC MUX reset GPIO
 #define IIC_MUX_ADDR             (0x70u)        // IIC multiplexer device address
 #define IIC_MUX_SCL_FREQ         (400000u)      // IIC multiplexer SCL frequency
 #define IIC_MUX_SCL_TIMEOUT_US   (10000u)       // IIC multiplexer SCL timeout in us
@@ -50,10 +50,10 @@ esp_err_t iic_mux_init(void)
    else
    {
       // init IIC multiplexer GPIO for reset signal
-      gpio_reset_pin(IIC_MUX_RST_GPIO);
-      gpio_set_level(IIC_MUX_RST_GPIO, 1u);
+      gpio_reset_pin(IIC_MUX_GPIO_RST);
+      gpio_set_level(IIC_MUX_GPIO_RST, 1u);
       /* Set the GPIO as a push/pull output */
-      gpio_set_direction(IIC_MUX_RST_GPIO, GPIO_MODE_OUTPUT);
+      gpio_set_direction(IIC_MUX_GPIO_RST, GPIO_MODE_OUTPUT);
 
       // reset the IIC multiplexer
       iic_mux_reset();
@@ -71,12 +71,12 @@ esp_err_t iic_mux_init(void)
  */
 void iic_mux_reset(void)
 {
-   gpio_set_level(IIC_MUX_RST_GPIO, 0u);
+   gpio_set_level(IIC_MUX_GPIO_RST, 0u);
    // set the /RST pin low for at least 6ns (at least 2 cycles at 240MHz CPU clock)
    asm volatile("nop");
    asm volatile("nop");
    asm volatile("nop");
-   gpio_set_level(IIC_MUX_RST_GPIO, 1u);
+   gpio_set_level(IIC_MUX_GPIO_RST, 1u);
 
    mu8_MuxChannel = IIC_MUX_CHANNEL_INVALID;
 }

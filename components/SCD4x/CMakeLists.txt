@@ -11,7 +11,6 @@ idf_component_register(
    REQUIRES
       sensor
    PRIV_REQUIRES
-      driver
       iic
       iic_mux
       esp_timer

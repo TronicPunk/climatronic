@@ -10,10 +10,18 @@
 
 /* --- Defines ------------------------------------------------------------- */
 
-#define OUTPUT_NUM_CHANNEL_MAX   (0x8uL)  // number of output channels
-#define OUTPUT_PWM_MIN           (0)      // min. PWM value (0%)
-#define OUTPUT_PWM_MAX           (1000)   // max. PWM value (100%)
+#define OUTPUT_NUM_CHANNEL_MAX   (0x8uL)        // number of output channels
+#define OUTPUT_PWM_MIN           (0)            // min. PWM value (0%)
+#define OUTPUT_PWM_MAX           (1000)         // max. PWM value (100%)
 
+#define GPIO_OUT1                GPIO_NUM_32    // GPIO for OUT_1
+#define GPIO_OUT2                GPIO_NUM_33    // GPIO for OUT_2
+#define GPIO_OUT3                GPIO_NUM_25    // GPIO for OUT_3
+#define GPIO_OUT4                GPIO_NUM_26    // GPIO for OUT_4
+#define GPIO_OUT5                GPIO_NUM_27    // GPIO for OUT_5
+#define GPIO_OUT6                GPIO_NUM_13    // GPIO for OUT_6
+#define GPIO_OUT7                GPIO_NUM_16    // GPIO for OUT_7
+#define GPIO_OUT8                GPIO_NUM_17    // GPIO for OUT_8
 
 /* --- Types --------------------------------------------------------------- */
 

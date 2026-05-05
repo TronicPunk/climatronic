@@ -4,11 +4,10 @@ idf_component_register(
       "BME68x_SensorAPI/bme68x.c"
    INCLUDE_DIRS
       "."
-      "BME68x_SensorAPI" 
+      "BME68x_SensorAPI"
    REQUIRES
       sensor
    PRIV_REQUIRES
-      driver
       iic
       iic_mux
       esp_timer

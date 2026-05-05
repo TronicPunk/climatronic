@@ -14,10 +14,10 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include "inout.h"
 #include "iic.h"
 #include "iic_mux.h"
 #include "sensor.h"
@@ -40,8 +40,6 @@
 #define XSTR(s)         STR(s) // to stringify a macro...
 #define VERSION_STRING  "V"XSTR(VERSION_MAJOR)"."XSTR(VERSION_MINOR)"r"XSTR(VERSION_RELEASE)
 
-#define BLINK_GPIO            GPIO_NUM_2
-#define CONFIG_BLINK_PERIOD   1000
 #define PWM_STEP              50
 
 
@@ -50,28 +48,26 @@
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
 static void m_menu_main(void);
-static void m_menu_sub(void);
+static void m_menu_sys(void);
+static void m_toggle_usens_en(void);
 static int32_t m_test_input(void);
 static int32_t m_test_output(void);
 static void m_test_output_print_channel(const uint32_t ou32_Channel, const uint8_t ou8_EditFlag);
 static void m_test_output_disable_all(const uint32_t ou32_EditChannel);
-static void m_configure_led(void);
-static void m_toggle_led(void);
 
 
 /* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
 
 static const char *TAG = "climatronic";
-static uint8_t s_led_state = 0;
 
-const T_Menu gt_MenuSub =
+const T_Menu gt_MenuSys =
 {
    MENU_MAGIC,    // menu structure identification
-   m_menu_sub,    // show menu function
+   m_menu_sys,    // show menu function
    NULL,          // menu exit function
    1,             // number of menu entries
    {
-      (void *)&m_toggle_led,   // submenu system test
+      (void *)&m_toggle_usens_en,   // toggle the sensor supply
    }
 };
 
@@ -83,7 +79,7 @@ const T_Menu gt_MenuMain =
    NULL,        // menu exit function
    3,           // number of menu entries
    {
-      (void *)&gt_MenuSub,    // submenu system test
+      (void *)&gt_MenuSys,    // submenu system test
       (void *)&m_test_input,  // submenu input test
       (void *)&m_test_output  // function output test
    }
@@ -106,13 +102,15 @@ static void m_menu_main(void)
    printf(" [3]  Outputs\r\n");
 }
 
-static void m_menu_sub(void)
+static void m_menu_sys(void)
 {
    clr_scr();
    printf("------------------------------------------\r\n");
    printf(" System functions\r\n");
    printf("------------------------------------------\r\n\n");
-   printf(" [1]  Toggle LED\r\n\n");
+   printf(" [1]  Toggle Sensor Supply\r\n");
+   printf("      Usens  = %lu mV\r\n", adc_read_mv(ADC_USENS));
+   printf("      Button = 0x%02lX\r\n\n", io_get_switch_button());
    printf("[ESC] return to previous menu\r\n");
 }
 
@@ -336,21 +334,12 @@ static void m_test_output_disable_all(const uint32_t ou32_EditChannel)
    }
 }
 
-
-static void m_configure_led(void)
+static void m_toggle_usens_en(void)
 {
-    s_led_state = 0;
-    gpio_reset_pin(BLINK_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
-}
-
-static void m_toggle_led(void)
-{
-    /* Toggle the LED state */
-    s_led_state = !s_led_state;
-   /* Set the GPIO level according to the state (LOW or HIGH)*/
-    gpio_set_level(BLINK_GPIO, s_led_state);
+   uint32_t u32_UsensEn = io_get_sensor_supply_state();
+    /* Toggle the USENS_EN signal */
+   u32_UsensEn = (u32_UsensEn != 0) ? 0u : 1u;
+   io_set_sensor_supply_state(u32_UsensEn);
 }
 
 void app_main(void)
@@ -362,8 +351,8 @@ void app_main(void)
    __force_link_bme68x();
    __force_link_scd4x();
 
+   io_init();        // init IO signals
    ESP_ERROR_CHECK(nvs_flash_init());
-   m_configure_led();
    serial_init();
 
    // init the web interface
