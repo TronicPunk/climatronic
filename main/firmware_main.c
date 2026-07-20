@@ -20,6 +20,7 @@
 #include "inout.h"
 #include "iic.h"
 #include "iic_mux.h"
+#include "iic_eeprom.h"
 #include "sensor.h"
 #include "output.h"
 #include "timer.h"
@@ -50,6 +51,12 @@
 static void m_menu_main(void);
 static void m_menu_sys(void);
 static void m_toggle_usens_en(void);
+static void m_menu_eeprom(void);
+static int32_t m_test_read_eeprom(void);
+static int32_t m_test_write_eeprom_addr(void);
+static int32_t m_test_write_eeprom_rand(void);
+static int32_t m_test_clear_eeprom(void);
+static int32_t m_test_write_eeprom_pattern(const uint32_t ou32_Pattern);
 static int32_t m_test_input(void);
 static int32_t m_test_output(void);
 static void m_test_output_print_channel(const uint32_t ou32_Channel, const uint8_t ou8_EditFlag);
@@ -60,14 +67,29 @@ static void m_test_output_disable_all(const uint32_t ou32_EditChannel);
 
 static const char *TAG = "climatronic";
 
+const T_Menu gt_MenuEeprom =
+{
+   MENU_MAGIC,    // menu structure identification
+   m_menu_eeprom, // show menu function
+   NULL,          // menu exit function
+   4,             // number of menu entries
+   {
+      (void *)&m_test_read_eeprom,        // dump eeprom data
+      (void *)&m_test_write_eeprom_addr,  // write address data
+      (void *)&m_test_write_eeprom_rand,  // write random data
+      (void *)&m_test_clear_eeprom,       // clear EEPROM (fill with 0xFF)
+   }
+};
+
 const T_Menu gt_MenuSys =
 {
    MENU_MAGIC,    // menu structure identification
    m_menu_sys,    // show menu function
    NULL,          // menu exit function
-   1,             // number of menu entries
+   2,             // number of menu entries
    {
       (void *)&m_toggle_usens_en,   // toggle the sensor supply
+      (void *)&gt_MenuEeprom,       // eeprom test functions
    }
 };
 
@@ -110,9 +132,223 @@ static void m_menu_sys(void)
    printf("------------------------------------------\r\n\n");
    printf(" [1]  Toggle Sensor Supply\r\n");
    printf("      Usens  = %lu mV\r\n", adc_read_mv(ADC_USENS));
-   printf("      Button = 0x%02lX\r\n\n", io_get_switch_button());
+   printf("      Button = 0x%02lX\r\n", io_get_switch_button());
+   printf(" [2]  Test EEPROM\r\n\n");
    printf("[ESC] return to previous menu\r\n");
 }
+
+static void m_menu_eeprom(void)
+{
+   clr_scr();
+   printf("------------------------------------------\r\n");
+   printf(" EEPROM test functions\r\n");
+   printf("------------------------------------------\r\n\n");
+   printf(" [1]  Read EEPROM\r\n");
+   printf(" [2]  Write EEPROM with address data\r\n");
+   printf(" [3]  Write EEPROM with random data\r\n");
+   printf(" [4]  Clear EEPROM (fill with 0xFF)\r\n\n");
+   printf("[ESC] return to previous menu\r\n");
+}
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    read and dump EEPROM data
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_test_read_eeprom(void)
+{
+   const uint32_t u32_DumpLines = 16u;
+   const uint32_t u32_DumpLineSize = 16u;
+   const uint32_t u32_DumpSize = u32_DumpLines * u32_DumpLineSize;
+   uint8_t u8_Key = 0u;
+
+   clr_scr();
+   printf("-------------------------------------------------------\r\n");
+   printf(" Read EEPROM data\r\n");
+   printf("-------------------------------------------------------\r\n\n");
+
+   serial_clear_rx_buf(); // clear RX buffer
+
+   if (iic_eeprom_is_ready() == ESP_OK)
+   {
+      uint8_t au8_EepromBuffer[u32_DumpSize];
+      uint32_t u32_BufferAddr = 0u;
+
+      printf(" [ESC] Terminate, other key = next 256byte\r\n\n");
+
+      while (u8_Key != 0x1Bu)
+      {
+         // read memory
+         esp_err_t t_Err = iic_eeprom_read(u32_BufferAddr, u32_DumpSize, au8_EepromBuffer);
+         // dump memory
+         set_cursor(0u, 7u);
+         for (uint32_t u32_Line = 0u; u32_Line < u32_DumpLines; u32_Line++)
+         {
+            const uint32_t u32_LineOffset = u32_Line * u32_DumpLineSize;
+
+            printf("0x%04lX: ", u32_BufferAddr + u32_LineOffset);
+            if (t_Err == ESP_OK)
+            {
+               for (uint32_t u32_Idx = 0u; u32_Idx < u32_DumpLineSize; u32_Idx++)
+               {
+                  printf("%02X ", au8_EepromBuffer[u32_LineOffset + u32_Idx]);
+               }
+               printf("\r\n");
+            }
+            else
+            {
+               printf("EEPROM read error                    \r\n");
+            }
+         }
+
+         u32_BufferAddr += u32_DumpSize;
+         if (u32_BufferAddr >= IIC_EEPROM_SIZE)
+         {
+            u32_BufferAddr = 0u;
+         }
+
+         u8_Key = get_key();
+      }
+   }
+   else
+   {
+      printf(" EEPROM not ready, press any key...\r\n\n");
+      get_key();
+   }
+
+   return 1;
+}
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    fill EEPROM with address data
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_test_write_eeprom_addr(void)
+{
+   return m_test_write_eeprom_pattern(0x00010000uL);
+}
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    fill EEPROM with random data
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_test_write_eeprom_rand(void)
+{
+   return m_test_write_eeprom_pattern(0x00010001uL);
+}
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    fill EEPROM with 0xFF data
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_test_clear_eeprom(void)
+{
+   return m_test_write_eeprom_pattern(0x0000FFFFuL);
+}
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    fill EEPROM with random data
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_test_write_eeprom_pattern(const uint32_t ou32_Pattern)
+{
+   const uint32_t u32_BufferSize = 256u;
+   esp_err_t t_Err;
+
+   clr_scr();
+   printf("-------------------------------------------------------\r\n");
+   if (ou32_Pattern > 0x00010000u)
+   {
+      printf(" Write EEPROM with random data\r\n");
+   }
+   else if (ou32_Pattern == 0x00010000u)
+   {
+      printf(" Write EEPROM with address data\r\n");
+   }
+   else
+   {
+      printf(" Write EEPROM with 0x%04lX data\r\n", ou32_Pattern);
+   }
+   printf("-------------------------------------------------------\r\n\n");
+
+   serial_clear_rx_buf(); // clear RX buffer
+
+   if (iic_eeprom_is_ready() == ESP_OK)
+   {
+      uint8_t au8_EepromBuffer[u32_BufferSize];
+      uint32_t u32_BufferAddr = 0u;
+      uint32_t u32_Line = 4u;
+
+      srand((unsigned int)esp_timer_get_time());
+
+      while (u32_BufferAddr < IIC_EEPROM_SIZE)
+      {
+         set_cursor(0u, u32_Line);
+         printf(" write address 0x%04lX: ", u32_BufferAddr);
+         // setup data buffer
+         for (uint32_t u32_Idx=0; u32_Idx < u32_BufferSize; u32_Idx += 2u)
+         {
+            uint16_t u16_Pattern;
+
+            if (ou32_Pattern < 0x10000u)
+            {
+               u16_Pattern = (uint16_t)ou32_Pattern;
+            }
+            else if (ou32_Pattern == 0x10000u)
+            {
+               u16_Pattern = u32_BufferAddr+u32_Idx;
+            }
+            else
+            {
+               u16_Pattern = (uint16_t)(rand() % 0x10000u);
+            }
+
+            au8_EepromBuffer[u32_Idx] = (uint8_t)(u16_Pattern & 0xFFu);
+            au8_EepromBuffer[u32_Idx+1u] = (uint8_t)((u16_Pattern >> 8u) & 0xFFu);
+         }
+
+         t_Err = iic_eeprom_write(u32_BufferAddr, u32_BufferSize, au8_EepromBuffer);
+
+         if (t_Err == ESP_OK)
+         {
+            printf("OK");
+         }
+         else
+         {
+            printf("error %d", t_Err);
+            u32_Line++;
+         }
+
+         u32_BufferAddr += u32_BufferSize;
+      }
+
+      printf("\r\n\n press any key...");
+      get_key();
+   }
+   else
+   {
+      printf(" EEPROM not ready, press any key...\r\n\n");
+      get_key();
+   }
+
+   return 1;
+}
+
+
 
 //-----------------------------------------------------------------------------
 /*!
@@ -360,8 +596,9 @@ void app_main(void)
    start_mdns_service();
    start_webserver();
 
-   iic_init();       // init the IIC interface
-   iic_mux_init();   // init the IIC multiplexer
+   iic_init();          // init the IIC interface
+   iic_mux_init();      // init the IIC multiplexer
+   iic_eeprom_init();   // init the IIC eeprom
 
    err = output_init();
    if (err != ESP_OK)

@@ -8,6 +8,7 @@ idf_component_register(
       inout
       iic
       iic_mux
+      iic_eeprom
       sensor
       BME280
       BME68x
