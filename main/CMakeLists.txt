@@ -1,6 +1,12 @@
 idf_component_register(
    SRCS
-      "firmware_main.c" "serial.c" "menu.c" "debug.c"
+      "firmware_main.c"
+      "serial.c"
+      "menu.c"
+      "system_setup.c"
+      "eeprom_test.c"
+      "output_setup.c"
+      "debug.c"
    INCLUDE_DIRS
       "."
    PRIV_REQUIRES
@@ -14,6 +20,7 @@ idf_component_register(
       BME68x
       SCD4x
       output
+      device_data
       webif
       timer
 )

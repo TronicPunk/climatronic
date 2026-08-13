@@ -1,0 +1,9 @@
+idf_component_register(
+   SRCS
+      "device_data.c"
+   INCLUDE_DIRS
+      "."
+   PRIV_REQUIRES
+      nvm_data
+      iic_eeprom
+)

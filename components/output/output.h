@@ -5,23 +5,9 @@
 */
 
 /* --- Includes ------------------------------------------------------------ */
-#include "esp_err.h"
-#include "esp_types.h"
+#include "output_data.h"
 
 /* --- Defines ------------------------------------------------------------- */
-
-#define OUTPUT_NUM_CHANNEL_MAX   (0x8uL)        // number of output channels
-#define OUTPUT_PWM_MIN           (0)            // min. PWM value (0%)
-#define OUTPUT_PWM_MAX           (1000)         // max. PWM value (100%)
-
-#define GPIO_OUT1                GPIO_NUM_32    // GPIO for OUT_1
-#define GPIO_OUT2                GPIO_NUM_33    // GPIO for OUT_2
-#define GPIO_OUT3                GPIO_NUM_25    // GPIO for OUT_3
-#define GPIO_OUT4                GPIO_NUM_26    // GPIO for OUT_4
-#define GPIO_OUT5                GPIO_NUM_27    // GPIO for OUT_5
-#define GPIO_OUT6                GPIO_NUM_13    // GPIO for OUT_6
-#define GPIO_OUT7                GPIO_NUM_16    // GPIO for OUT_7
-#define GPIO_OUT8                GPIO_NUM_17    // GPIO for OUT_8
 
 /* --- Types --------------------------------------------------------------- */
 
@@ -35,6 +21,17 @@
  *  - Others: Fail
  */
 esp_err_t output_init(void);
+
+/**
+ * @brief read output setup data
+ *
+ * @param ou32_Channel  output channel, range: [0 .. OUTPUT_NUM_CHANNEL_MAX-1]
+ * @param opt_OutSetup  return poutput setup data
+ * @return esp_err_t
+ *  - ESP_OK: Success
+ *  - ESP_ERR_INVALIG_ARG: ou32_Channel out of range
+ */
+esp_err_t output_get_setup(const uint32_t ou32_Channel, T_out_channel_data * const opt_OutSetup);
 
 /**
  * @brief Set output PWM value

@@ -37,6 +37,8 @@ const T_sensor_bus_init gat_SensorbusInit[ICC_BUS_COUNT +1u] =
    { .u8_IicBus = 1u, .u32_IicFreqHz = 400000u },
    { .u8_IicBus = 2u, .u32_IicFreqHz = 400000u },
    { .u8_IicBus = 3u, .u32_IicFreqHz = 400000u },
+   { .u8_IicBus = 4u, .u32_IicFreqHz = 400000u },
+   { .u8_IicBus = 5u, .u32_IicFreqHz = 400000u },
    // sensor bus init list terminator
    { .u8_IicBus = I2C_BUS_INVALID, .u32_IicFreqHz = 0u }
 };

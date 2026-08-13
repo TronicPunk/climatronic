@@ -60,6 +60,12 @@ void wifi_connect(void) {
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true, portMAX_DELAY);
 }
 
+void wifi_stop(void)
+{
+   esp_wifi_stop();
+   esp_wifi_deinit();
+}
+
 void start_mdns_service(void)
 {
     mdns_init();
@@ -68,4 +74,9 @@ void start_mdns_service(void)
 
     // Optional: Dienst registrieren
     mdns_service_add("WebServer", "_http", "_tcp", 80, NULL, 0);
+}
+
+void stop_mdns_service(void)
+{
+   mdns_free();
 }

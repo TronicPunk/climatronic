@@ -24,6 +24,7 @@ extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 #define OUTPUT_MODE_AUTO      (0x02u)     // output controlled by software
 
 /* --- Module globals ------------------------------------------------------ */
+static httpd_handle_t server = NULL;
 static uint8_t mu8_OutputMode = OUTPUT_MODE_AUTO;
 static const char * mapc_OutputMode[3] = { "off", "manual", "auto" };
 
@@ -239,7 +240,6 @@ static esp_err_t m_set_handler_mode(httpd_req_t *req)
 void start_webserver(void)
 {
    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-   httpd_handle_t server = NULL;
 
    httpd_start(&server, &config);
 
@@ -256,4 +256,12 @@ void start_webserver(void)
    httpd_register_uri_handler(server, &get_output_data);
    httpd_register_uri_handler(server, &set_output_uri);
    httpd_register_uri_handler(server, &set_mode_uri);
+}
+
+void stop_webserver(void)
+{
+   if (server != NULL)
+   {
+      httpd_stop(server);
+   }
 }

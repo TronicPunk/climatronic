@@ -9,14 +9,11 @@
 #define IIC_EEPROM_H
 
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
+#include "iic_eeprom_size.h"
 #include "esp_types.h"
 #include "esp_err.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-
-// device parameters for M24C64-DFMN6
-#define IIC_EEPROM_SIZE             8192u    // memory size 8KB
-#define IIC_EEPROM_PAGE_SIZE        32u      // memory page size is 32byte
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 

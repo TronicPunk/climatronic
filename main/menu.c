@@ -65,7 +65,7 @@ void menu_entry(const T_Menu * opt_Menu)
          if (u8_Key < opt_Menu->u32_MenuEntries) // valid menu item?
          {
             if (opt_Menu->apv_MenuMembers[u8_Key] != NULL)
-            {           
+            {
                void * const pv_FuncMenu = opt_Menu->apv_MenuMembers[u8_Key];
 
                // check if pv_FuncMenu points to a further menu structure
@@ -74,7 +74,7 @@ void menu_entry(const T_Menu * opt_Menu)
                   menu_entry(pv_FuncMenu);
                }
                else
-               { 
+               {
                   PR_test_func pr_test_func = pv_FuncMenu;
 
                   int32_t s32_RetVal = (*pr_test_func)();
@@ -199,15 +199,15 @@ uint8_t get_key(void)
    do
    {
       Key = fgetc(stdin);
-      
+
       // if no char is available wait and release CPU time for a few milli seconds
-      if (Key == EOF)      
+      if (Key == EOF)
       {
          delay_us(TASK_DELAY_MS * 1000u);
       }
    }
    while (Key == EOF);
-   
+
    return (uint8_t)Key;
 }
 
@@ -245,13 +245,13 @@ esp_err_t get_string(uint8_t * const opu8_String, uint32_t ou32_Size)
       {
          u8_Char = get_key();
       }
-      while ((isgraph(u8_Char) == false) && (u8_Char != '\r') && (u8_Char != '\b') && (u8_Char != ''));
+      while ((isgraph(u8_Char) == false) && (u8_Char != '\r') && (u8_Char != '\n') && (u8_Char != '\b') && (u8_Char != ''));
 
       if (u8_Char == '')
       {
          break;
       }
-      else if (u8_Char == '\r')
+      else if ((u8_Char == '\r') || (u8_Char == '\n'))
       {
          opu8_String[i] = '\0'; // terminate string < ou32_Size
          t_Err = ESP_OK;

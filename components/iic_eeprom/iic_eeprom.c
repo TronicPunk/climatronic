@@ -1,7 +1,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 /*!
-   \file
-   \brief provide functions for IIC multiplexer control
+   \file  iic_eeprom.c
+   \brief provide functions for IIC EEPROM access
 */
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -147,6 +147,7 @@ esp_err_t iic_eeprom_read(const uint32_t ou32_Address, const uint32_t ou32_Size,
 
          t_Err = i2c_master_transmit_receive(mt_IicDevHandle_Eeprom, au8_Address, IIC_EEPROM_ADDR_SIZE,
                                              opu8_Data, ou32_Size, IIC_EEPROM_TIMEOUT_MS);
+         t_Err = (t_Err != ESP_OK) ? ESP_FAIL : t_Err;
       }
    }
 
@@ -201,6 +202,7 @@ static esp_err_t m_iic_eeprom_write_page(const uint32_t ou32_Address, const uint
       memcpy(&au8_WritePageBuffer[2], opu8_Data, ou32_Size);
 
       t_Err = i2c_master_transmit(mt_IicDevHandle_Eeprom, au8_WritePageBuffer, IIC_EEPROM_ADDR_SIZE + ou32_Size, IIC_EEPROM_TIMEOUT_MS);
+      t_Err = (t_Err != ESP_OK) ? ESP_FAIL : t_Err;
    }
 
    return t_Err;

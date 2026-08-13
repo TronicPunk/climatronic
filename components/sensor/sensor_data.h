@@ -15,7 +15,7 @@
 #include "scd4x_interface.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define ICC_BUS_COUNT      4u    // number of available IIC busses
+#define ICC_BUS_COUNT      6u    // number of available IIC busses
 #define SENSOR_TYPE_COUNT  3u    // number of different supported IIC sensors
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
