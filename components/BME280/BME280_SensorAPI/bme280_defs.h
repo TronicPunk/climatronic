@@ -137,6 +137,8 @@
 
 /*! @name BME280 chip identifier */
 #define BME280_CHIP_ID                            UINT8_C(0x60)
+/*! @name BMP280 chip identifier */
+#define BMP280_CHIP_ID                            UINT8_C(0x58)
 
 /*! @name I2C addresses */
 #define BME280_I2C_ADDR_PRIM                      UINT8_C(0x76)
@@ -158,6 +160,7 @@
 #define BME280_LEN_TEMP_PRESS_CALIB_DATA          UINT8_C(26)
 #define BME280_LEN_HUMIDITY_CALIB_DATA            UINT8_C(7)
 #define BME280_LEN_P_T_H_DATA                     UINT8_C(8)
+#define BME280_LEN_P_T_DATA                       UINT8_C(6)
 
 /*! @name Sensor power modes */
 #define BME280_POWERMODE_SLEEP                    UINT8_C(0x00)
@@ -224,7 +227,9 @@
 #define BME280_STANDBY_TIME_500_MS                (0x04)
 #define BME280_STANDBY_TIME_1000_MS               (0x05)
 #define BME280_STANDBY_TIME_10_MS                 (0x06)
+#define BMP280_STANDBY_TIME_2000_MS               (0x06)
 #define BME280_STANDBY_TIME_20_MS                 (0x07)
+#define BMP280_STANDBY_TIME_4000_MS               (0x07)
 
 #define BME280_STANDBY_MSK                        UINT8_C(0xE0)
 #define BME280_STANDBY_POS                        UINT8_C(0x05)

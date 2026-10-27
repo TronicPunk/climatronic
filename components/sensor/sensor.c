@@ -106,7 +106,7 @@ esp_err_t sensor_detect(void)
       for (uint32_t u32_SensorTypeIdx = 0u; u32_SensorTypeIdx < SENSOR_TYPE_COUNT; u32_SensorTypeIdx++)
       {
          const T_sensor_bus_init * pt_IicBusInit = &gat_SensorbusInit[u32_IicBusIdx];
-         const T_sensor_descriptor * pt_SensorDescriptor = gapt_SensorTypes[u32_SensorTypeIdx]; // 0 = BME280, 1 = BME680, 2 = SCD41
+         const T_sensor_descriptor * pt_SensorDescriptor = gapt_SensorTypes[u32_SensorTypeIdx]; // 0 = BME280/BMP280, 1 = BME680, 2 = SCD41
          const uint8_t u8_IicAddr = pt_SensorDescriptor->au8_IicAddr[0];
          T_sensor_instance * pt_NewSensor = NULL;
          esp_err_t t_SensorFound;

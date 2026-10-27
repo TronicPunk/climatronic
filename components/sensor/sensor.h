@@ -48,7 +48,8 @@ typedef struct
 
 typedef struct
 {
-   const char * s_Type;       // sensor type
+   const char * s_Type;       // sensor type as string
+   uint16_t u16_SensorId;     // sensor numeric ID
    uint16_t u16_SensorCaps;   // sensor capabilities
 } T_sensor_type;
 

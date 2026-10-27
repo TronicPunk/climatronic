@@ -18,6 +18,9 @@
 #include "debug.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
+#define SCD40_ID                    0xCD40u     // SCD40 sensor ID
+#define SCD41_ID                    0xCD41u     // SCD41 sensor ID
+
 #define SCD4X_IIC_SCL_TIMEOUT_US    10000u      // IIC SCL timeout in us
 #define SCD4X_IIC_TIMEOUT_MS        50u         // IIC transaction timeout in ms
 
@@ -59,6 +62,7 @@ static int8_t m_scd4x_i2c_write(void *intf_ptr, const uint8_t *data, uint32_t le
 static const T_sensor_type mt_SCD41_type =
 {
    .s_Type = "SCD41",
+   .u16_SensorId = SCD41_ID,
    .u16_SensorCaps = ((SENSOR_CAP_TEMPERATURE|SENSOR_CAP_HUMIDITY|SENSOR_CAP_CO2) |\
                       (SENSOR_CAP_MODE_SLEEP|SENSOR_CAP_MODE_SINGLE|SENSOR_CAP_MODE_CYCLIC))
 };

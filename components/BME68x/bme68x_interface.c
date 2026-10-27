@@ -14,6 +14,8 @@
 #include "timer.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
+#define BME680_ID                   0xE680u     // BME680 sensor ID
+
 #define BME68X_IIC_SCL_TIMEOUT_US   (10000u)    // IIC SCL timeout in us
 #define BME68X_IIC_TIMEOUT_MS       (50u)       // IIC transaction timeout in ms
 #define BME68X_STATE_OPERATIONAL    (0u)        // normal operation, process sensor data
@@ -46,6 +48,7 @@ static void m_bme68x_delay_us(uint32_t u32_delay_us, void *intf_ptr);
 static const T_sensor_type mt_BME680_type =
 {
    .s_Type = "BME680",
+   .u16_SensorId = BME680_ID,
    .u16_SensorCaps = ((SENSOR_CAP_TEMPERATURE|SENSOR_CAP_PRESSURE|SENSOR_CAP_HUMIDITY|SENSOR_CAP_IAQ) |\
                       (SENSOR_CAP_MODE_SLEEP|SENSOR_CAP_MODE_SINGLE))
 };

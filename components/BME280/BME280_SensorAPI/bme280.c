@@ -421,7 +421,8 @@ int8_t bme280_init(struct bme280_dev *dev)
     /* Check for chip id validity */
     if (rslt == BME280_OK)
     {
-        if (chip_id == BME280_CHIP_ID)
+        if ((chip_id == BME280_CHIP_ID) ||
+            (chip_id == BMP280_CHIP_ID))
         {
             dev->chip_id = chip_id;
 
@@ -606,7 +607,15 @@ int8_t bme280_get_sensor_settings(struct bme280_settings *settings, struct bme28
 
     if (settings != NULL)
     {
-        rslt = bme280_get_regs(BME280_REG_CTRL_HUM, reg_data, 4, dev);
+        if (dev->chip_id == BME280_CHIP_ID)
+        {
+            rslt = bme280_get_regs(BME280_REG_CTRL_HUM, reg_data, 4, dev);
+        }
+        else
+        {
+            reg_data[0] = 0;
+            rslt = bme280_get_regs(BME280_REG_STATUS, &reg_data[1], 3, dev);
+        }
 
         if (rslt == BME280_OK)
         {
@@ -725,7 +734,9 @@ int8_t bme280_get_sensor_data(uint8_t sensor_comp, struct bme280_data *comp_data
     if (comp_data != NULL)
     {
         /* Read the pressure and temperature data from the sensor */
-        rslt = bme280_get_regs(BME280_REG_DATA, reg_data, BME280_LEN_P_T_H_DATA, dev);
+        uint32_t len = (dev->chip_id == BME280_CHIP_ID) ? BME280_LEN_P_T_H_DATA : BME280_LEN_P_T_DATA;
+        reg_data[6] = 0x80; // set default hum_msb in case of BMP280
+        rslt = bme280_get_regs(BME280_REG_DATA, reg_data, len, dev);
 
         if (rslt == BME280_OK)
         {
@@ -735,6 +746,11 @@ int8_t bme280_get_sensor_data(uint8_t sensor_comp, struct bme280_data *comp_data
             /* Compensate the pressure and/or temperature and/or
              * humidity data from the sensor
              */
+            if (dev->chip_id == BMP280_CHIP_ID)
+            {
+               sensor_comp = sensor_comp & (uint8_t)(~(BME280_HUM));
+            }
+
             rslt = bme280_compensate_data(sensor_comp, &uncomp_data, comp_data, &dev->calib_data);
         }
     }
@@ -860,7 +876,7 @@ static int8_t set_osr_settings(uint8_t desired_settings, const struct bme280_set
 {
     int8_t rslt = BME280_W_INVALID_OSR_MACRO;
 
-    if (desired_settings & BME280_SEL_OSR_HUM)
+    if ((desired_settings & BME280_SEL_OSR_HUM) && (dev->chip_id == BME280_CHIP_ID))
     {
         rslt = set_osr_humidity_settings(settings, dev);
     }
@@ -1082,14 +1098,12 @@ static int8_t write_power_mode(uint8_t sensor_mode, struct bme280_dev *dev)
 static int8_t put_device_to_sleep(struct bme280_dev *dev)
 {
     int8_t rslt;
-    uint8_t reg_data[4];
     struct bme280_settings settings;
 
-    rslt = bme280_get_regs(BME280_REG_CTRL_HUM, reg_data, 4, dev);
+    rslt = bme280_get_sensor_settings(&settings, dev);
 
     if (rslt == BME280_OK)
     {
-        parse_device_settings(reg_data, &settings);
         rslt = bme280_soft_reset(dev);
 
         if (rslt == BME280_OK)
@@ -1448,17 +1462,21 @@ static int8_t get_calib_data(struct bme280_dev *dev)
          * it in device structure
          */
         parse_temp_press_calib_data(calib_data, dev);
-        reg_addr = BME280_REG_HUMIDITY_CALIB_DATA;
 
-        /* Read the humidity calibration data from the sensor */
-        rslt = bme280_get_regs(reg_addr, calib_data, BME280_LEN_HUMIDITY_CALIB_DATA, dev);
-
-        if (rslt == BME280_OK)
+        if (dev->chip_id == BME280_CHIP_ID)
         {
-            /* Parse humidity calibration data and store it in
-             * device structure
-             */
-            parse_humidity_calib_data(calib_data, dev);
+            reg_addr = BME280_REG_HUMIDITY_CALIB_DATA;
+
+            /* Read the humidity calibration data from the sensor */
+            rslt = bme280_get_regs(reg_addr, calib_data, BME280_LEN_HUMIDITY_CALIB_DATA, dev);
+
+            if (rslt == BME280_OK)
+            {
+                  /* Parse humidity calibration data and store it in
+                  * device structure
+                  */
+                  parse_humidity_calib_data(calib_data, dev);
+            }
         }
     }
 

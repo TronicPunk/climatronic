@@ -14,6 +14,9 @@
 #include "timer.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
+#define BME280_ID                   0xE280u     // BME280 sensor ID
+#define BMP280_ID                   0xB280u     // BMP280 sensor ID
+
 #define BME280_IIC_SCL_TIMEOUT_US   (10000u)    // IIC SCL timeout in us
 #define BME280_IIC_TIMEOUT_MS       (50u)       // IIC transaction timeout in ms
 
@@ -44,7 +47,16 @@ static void m_bme280_delay_us(uint32_t u32_delay_us, void *intf_ptr);
 static const T_sensor_type mt_BME280_type =
 {
    .s_Type = "BME280",
+   .u16_SensorId = BME280_ID,
    .u16_SensorCaps = ((SENSOR_CAP_TEMPERATURE|SENSOR_CAP_PRESSURE|SENSOR_CAP_HUMIDITY) |\
+                      (SENSOR_CAP_MODE_SLEEP|SENSOR_CAP_MODE_SINGLE|SENSOR_CAP_MODE_CYCLIC))
+};
+
+static const T_sensor_type mt_BMP280_type =
+{
+   .s_Type = "BMP280",
+   .u16_SensorId = BMP280_ID,
+   .u16_SensorCaps = ((SENSOR_CAP_TEMPERATURE|SENSOR_CAP_PRESSURE) |\
                       (SENSOR_CAP_MODE_SLEEP|SENSOR_CAP_MODE_SINGLE|SENSOR_CAP_MODE_CYCLIC))
 };
 
@@ -57,10 +69,21 @@ static const T_sensor_api mt_BME280_api =
    .pr_SensorCommand = &m_bme280_sensor_command
 };
 
-// complete sensor description
+// complete BME280 sensor description
 const T_sensor_descriptor gt_BME280_descriptor =
 {
    .pt_Sensor = &mt_BME280_type,
+   .pt_SensorApi = &mt_BME280_api,
+   .u32_UpdateRateMinUs = 100000u,
+   .u32_IicFreqMaxHz = 400000u,
+   .u8_IicAddrCount = 1u,
+   .au8_IicAddr = { BME280_I2C_ADDR_PRIM, BME280_I2C_ADDR_SEC }
+};
+
+// complete BMP280 sensor description
+const T_sensor_descriptor gt_BMP280_descriptor =
+{
+   .pt_Sensor = &mt_BMP280_type,
    .pt_SensorApi = &mt_BME280_api,
    .u32_UpdateRateMinUs = 100000u,
    .u32_IicFreqMaxHz = 400000u,
@@ -85,7 +108,8 @@ static esp_err_t m_bme280_get_mem(T_sensor_instance ** oppt_Sensor)
    if (pt_Sensor != NULL)
    {
       // check for valid sensor instance data
-      if (pt_Sensor->pt_SensorDescriptor == &gt_BME280_descriptor)
+      if ((pt_Sensor->pt_SensorDescriptor == &gt_BME280_descriptor) ||
+          (pt_Sensor->pt_SensorDescriptor == &gt_BMP280_descriptor))
       {
          // try to reuse memory for driver data:
          // return NULL if data not valid - otherwise pointer to empty memory block
@@ -285,7 +309,14 @@ static esp_err_t m_bme280_sensor_init(const uint8_t ou8_IicBus, const uint8_t ou
 //                        bme280_cal_meas_delay(&u32_Period, &settings);
 
                         // setup sensor instance data
-                        pt_Sensor->pt_SensorDescriptor = &gt_BME280_descriptor;
+                        if (pt_BME280_dev->chip_id == BME280_CHIP_ID)
+                        {
+                           pt_Sensor->pt_SensorDescriptor = &gt_BME280_descriptor;
+                        }
+                        else
+                        {
+                           pt_Sensor->pt_SensorDescriptor = &gt_BMP280_descriptor;
+                        }
                         pt_Sensor->u32_IicFreq = ou32_IicFreq;
                         pt_Sensor->u8_IicBus = ou8_IicBus;
                         pt_Sensor->u8_IicAddr = ou8_IicAddr;
@@ -340,7 +371,14 @@ static esp_err_t m_bme280_sensor_process_data(T_sensor_instance * const opt_Sens
 
             pt_SensorData->f32_Temperature = (float)t_SensorData.temperature * 0.01f;
             pt_SensorData->f32_Pressure = (float)t_SensorData.pressure * 0.0001f;
-            pt_SensorData->f32_Humidity = (float)t_SensorData.humidity * 0.001f;
+            if (pt_BME280_dev->chip_id == BME280_CHIP_ID)
+            {
+               pt_SensorData->f32_Humidity = (float)t_SensorData.humidity * 0.001f;
+            }
+            else
+            {
+               pt_SensorData->f32_Humidity = SENSOR_VALUE_INVALID;
+            }
             pt_SensorData->f32_CO2 = SENSOR_VALUE_INVALID;
             pt_SensorData->f32_IAQ = SENSOR_VALUE_INVALID;
             pt_SensorData->u32_TimeStampSec = get_time_sec();

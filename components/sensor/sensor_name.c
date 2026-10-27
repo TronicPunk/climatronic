@@ -33,15 +33,14 @@ char * sensor_name_create(const T_sensor_instance * opt_SensorInstance)
 
    if (pt_SensorName == NULL)
    {
-      // create default sensor name in format "<SensorType>_I2C<x>_0x<XX>":
-      // <SensorType>=sensor type string, <x>=I2C bus number, <XX>=I2C device address
+      // create default sensor name in format "<SensorType>_BUS<x>":
+      // <SensorType>=sensor type string, <x>=I2C bus number
       const char * const s_SensorType = opt_SensorInstance->pt_SensorDescriptor->pt_Sensor->s_Type;
-      char * const pt_SensorNameDef = malloc(strlen(s_SensorType) + 12u);
+      char * const pt_SensorNameDef = malloc(strlen(s_SensorType) + 7u);
 
       if (pt_SensorNameDef != NULL)
       {
-         (void)sprintf(pt_SensorNameDef, "%s_I2C%u_0x%02X", s_SensorType, opt_SensorInstance->u8_IicBus,
-                       opt_SensorInstance->u8_IicAddr);
+         (void)sprintf(pt_SensorNameDef, "%s_BUS%u", s_SensorType, opt_SensorInstance->u8_IicBus);
          pt_SensorName = pt_SensorNameDef;
       }
    }

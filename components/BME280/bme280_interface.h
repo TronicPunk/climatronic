@@ -20,7 +20,7 @@
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
 /* -- Global Variables ---------------------------------------------------------------------------------------------- */
-extern const T_sensor_descriptor gt_BME280_descriptor;   // delivers the sensor description
+extern const T_sensor_descriptor gt_BME280_descriptor;   // delivers the sensor description (also used for BMP280)
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
