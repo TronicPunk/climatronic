@@ -7,6 +7,7 @@
 
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include "sensor_data.h"
+#include "sensor_name.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 
@@ -44,7 +45,10 @@ static void m_sensor_task(TimerHandle_t pxTimer)
  */
 esp_err_t sensor_init_task(void)
 {
-   esp_err_t t_Err = sensor_detect();
+   esp_err_t t_Err;
+
+   (void)sensor_name_load();
+   t_Err = sensor_detect();
 
    if (t_Err == ESP_OK)
    {
@@ -78,7 +82,7 @@ uint16_t sensor_get_count(void)
 esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const opt_SensorInfo)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   const T_sensor_instance * const pt_Sensor = sensor_data_get_handle(ou16_SensorIdx);
+   const T_sensor_instance * const pt_Sensor = sensor_data_get_handle_idx(ou16_SensorIdx);
 
    if (pt_Sensor != NULL)
    {
@@ -99,6 +103,7 @@ esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const o
 esp_err_t sensor_detect(void)
 {
    esp_err_t t_Err = ESP_FAIL;
+   uint16_t u16_SensorCnt;
 
    for (uint32_t u32_IicBusIdx = 0u; u32_IicBusIdx < ICC_BUS_COUNT; u32_IicBusIdx++)
    {
@@ -120,6 +125,18 @@ esp_err_t sensor_detect(void)
       }
    }
 
+   if (t_Err == ESP_OK)
+   {
+      // do sensor naming
+      u16_SensorCnt = sensor_data_get_count();
+      for (uint16_t u16_SensorIdx = 0; u16_SensorIdx < u16_SensorCnt; u16_SensorIdx++)
+      {
+         T_sensor_instance * const pt_Sensor = sensor_data_get_handle_idx(u16_SensorIdx);
+         pt_Sensor->s_SensorName = sensor_name_get(pt_Sensor);
+      }
+      t_Err = sensor_name_store();
+   }
+
    return t_Err;
 }
 
@@ -129,7 +146,7 @@ esp_err_t sensor_detect(void)
 esp_err_t sensor_process_data(const uint16_t ou16_SensorIdx)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   T_sensor_instance * const pt_Sensor = sensor_data_get_handle(ou16_SensorIdx);
+   T_sensor_instance * const pt_Sensor = sensor_data_get_handle_idx(ou16_SensorIdx);
 
    if (pt_Sensor != NULL)
    {
@@ -153,7 +170,7 @@ esp_err_t sensor_process_data(const uint16_t ou16_SensorIdx)
 esp_err_t sensor_get_data(uint16_t ou16_SensorIdx, T_sensor_data * const opt_SensorData)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   T_sensor_instance * const pt_Sensor = sensor_data_get_handle(ou16_SensorIdx);
+   T_sensor_instance * const pt_Sensor = sensor_data_get_handle_idx(ou16_SensorIdx);
 
    if (pt_Sensor != NULL)
    {
@@ -177,7 +194,7 @@ esp_err_t sensor_get_data(uint16_t ou16_SensorIdx, T_sensor_data * const opt_Sen
 esp_err_t sensor_command(const uint16_t ou16_SensorIdx, const uint16_t ou16_Command, uint32_t * const  opu32_Parameter)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   T_sensor_instance * const pt_Sensor = sensor_data_get_handle(ou16_SensorIdx);
+   T_sensor_instance * const pt_Sensor = sensor_data_get_handle_idx(ou16_SensorIdx);
 
    if (pt_Sensor != NULL)
    {

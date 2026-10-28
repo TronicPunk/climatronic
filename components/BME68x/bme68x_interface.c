@@ -95,8 +95,6 @@ static esp_err_t m_bme68x_get_mem(T_sensor_instance ** oppt_Sensor)
          // try to reuse memory for driver data:
          // return NULL if data not valid - otherwise pointer to empty memory block
          pt_Sensor->pv_Handle = m_bme68x_reuse_mem(pt_Sensor->pv_Handle);
-         // free allocated memory for sensor name
-         sensor_name_free(pt_Sensor);
       }
       else
       {
@@ -137,6 +135,7 @@ static esp_err_t m_bme68x_get_mem(T_sensor_instance ** oppt_Sensor)
       pt_Sensor->u64_CallTimeUs = 0u;
       pt_Sensor->u32_Parameter = 0u;
       pt_Sensor->u16_SensorState = 0u;
+      pt_Sensor->s_SensorName = NULL;
    }
    else
    {
@@ -165,7 +164,6 @@ static void m_bme68x_free_mem(T_sensor_instance * const opt_Sensor)
          opt_Sensor->pv_Handle = NULL;
       }
 
-      sensor_name_free(opt_Sensor);
       free(opt_Sensor);
    }
 }
@@ -309,7 +307,6 @@ static esp_err_t m_bme68x_sensor_init(const uint8_t ou8_IicBus, const uint8_t ou
                            pt_Sensor->u32_IicFreq = ou32_IicFreq;
                            pt_Sensor->u8_IicBus = ou8_IicBus;
                            pt_Sensor->u8_IicAddr = ou8_IicAddr;
-                           pt_Sensor->s_SensorName = sensor_name_create(pt_Sensor);
                            // setup process timer: 1st data sample should be available after 0.2s
                            pt_Sensor->u64_CallTimeUs = esp_timer_get_time() + 200000uL;
                            pt_Sensor->u16_SensorState = BME68X_STATE_OPERATIONAL;

@@ -35,9 +35,9 @@ extern const T_sensor_descriptor * gapt_SensorTypes[SENSOR_TYPE_COUNT +1u];
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
-const char* sensor_data_get_name(const uint8_t ou8_IicBus, const uint8_t ou8_IicAddr);
 void sensor_data_register_sensor(T_sensor_instance * const opt_NewSensor);
 uint16_t sensor_data_get_count(void);
-T_sensor_instance* sensor_data_get_handle(const uint16_t ou16_SensorIdx);
+T_sensor_instance* sensor_data_get_handle_idx(const uint16_t ou16_SensorIdx);
+T_sensor_instance* sensor_data_get_handle_bus_id(const uint8_t ou8_IicBus, const uint16_t ou16_SensorId);
 
 #endif /* SENSOR_DATA_H */

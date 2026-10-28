@@ -31,14 +31,14 @@ typedef struct t_sensor_instance
    struct t_sensor_instance * pt_Next;                // pointer to next sensor instance, NULL for last sensor instance
    uint64_t u64_CallTimeUs;                           // next call (absolute system time in usec)
    T_sensor_data t_SensorData;                        // sensor data sample
+   const T_sensor_descriptor * pt_SensorDescriptor;   // pointer to sensor descriptor
    char * s_SensorName;                               // sensor name
    void * pv_Handle;                                  // sensor handle with driver specific information
-   const T_sensor_descriptor * pt_SensorDescriptor;   // pointer to sensor descriptor
    uint32_t u32_Parameter;                            // parameter/result for sensor commands
+   uint32_t u32_IicFreq;                              // connected IIC SCL frequency
    uint16_t u16_SensorState;                          // sensor state (command processing)
    uint8_t u8_IicBus;                                 // connected IIC bus
    uint8_t u8_IicAddr;                                // sensor IIC bus address
-   uint32_t u32_IicFreq;                              // connected IIC SCL frequency
 } T_sensor_instance;
 
 typedef struct _sensor_api

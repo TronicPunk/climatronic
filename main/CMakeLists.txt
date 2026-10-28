@@ -6,6 +6,7 @@ idf_component_register(
       "system_setup.c"
       "eeprom_test.c"
       "output_setup.c"
+      "sensor_setup.c"
       "debug.c"
    INCLUDE_DIRS
       "."

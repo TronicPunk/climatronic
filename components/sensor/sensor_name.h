@@ -13,13 +13,19 @@
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 
+#define SENSOR_NAME_LEN_MAX      24 // max. length of sensor name string (without \0)
+
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
 /* -- Global Variables ---------------------------------------------------------------------------------------------- */
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
-char * sensor_name_create(const T_sensor_instance * opt_Sensor);
-void sensor_name_free(T_sensor_instance * const opt_Sensor);
+esp_err_t sensor_name_load(void);
+esp_err_t sensor_name_store(void);
+char * sensor_name_get(const T_sensor_instance * opt_SensorInstance);
+esp_err_t sensor_name_set(const T_sensor_instance * opt_SensorInstance, const char * const oac_SensorName);
+char * sensor_name_get_idx(const uint16_t ou16_SensorIdx);
+esp_err_t sensor_name_set_idx(const uint16_t ou16_SensorIdx, const char * const oac_SensorName);
 
 #endif /* SENSOR_NAME_H */

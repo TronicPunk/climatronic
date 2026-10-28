@@ -130,7 +130,7 @@ esp_err_t nvm_data_store(const uint32_t ou32_Address, const uint32_t ou32_Size, 
    t_ErrWr = iic_eeprom_write(ou32_Address, ou32_Size, pu8_Data);
    t_ErrWrMirror = iic_eeprom_write(ou32_Address + NVM_DATA_MIRROR_ADDR, ou32_Size, pu8_Data);
 
-   if ((t_ErrWr == ESP_ERR_INVALID_ARG) || (t_ErrWr == ESP_ERR_INVALID_ARG))
+   if ((t_ErrWr == ESP_ERR_INVALID_ARG) || (t_ErrWrMirror == ESP_ERR_INVALID_ARG))
    {
       t_Err = ESP_ERR_INVALID_ARG;
    }
