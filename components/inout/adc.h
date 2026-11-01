@@ -4,6 +4,9 @@
    reads ADC signals
 */
 
+#ifndef ADC_H
+#define ADC_H
+
 /* --- Includes ------------------------------------------------------------ */
 #include "esp_types.h"
 #include "esp_err.h"
@@ -23,3 +26,5 @@
 
 int adc_init(void);
 uint32_t adc_read_mv(const uint32_t adc_channel);
+
+#endif // ADC_H

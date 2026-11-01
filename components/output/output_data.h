@@ -3,6 +3,9 @@
    load/store output data from/to NVM
 */
 
+#ifndef OUTPUT_DATA_H
+#define OUTPUT_DATA_H
+
 /* --- Includes ------------------------------------------------------------ */
 #include "esp_types.h"
 #include "esp_err.h"
@@ -43,3 +46,5 @@ typedef struct
 
 esp_err_t output_data_load(const uint32_t ou32_Channel, T_out_channel_data * const opt_OutChannelSetup);
 esp_err_t output_data_store(const uint32_t ou32_Channel, const T_out_channel_data * const opt_OutChannelSetup);
+
+#endif // OUTPUT_DATA_H

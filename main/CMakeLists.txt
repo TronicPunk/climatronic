@@ -24,4 +24,5 @@ idf_component_register(
       device_data
       webif
       timer
+      esp_wifi
 )

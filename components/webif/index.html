@@ -4,6 +4,10 @@
    <meta charset="UTF-8">
    <title>Clima-Control</title>
    <style>
+      body {
+         font-family: Arial, sans-serif;
+         margin: 20px;
+      }
       table {
          border-collapse: collapse;
          width: 100%;
@@ -15,6 +19,25 @@
       }
       th {
          background-color: #f0f0f0;
+      }
+      .tabs {
+         display: flex;
+         gap: 10px;
+         margin-bottom: 20px;
+      }
+      .tab {
+         padding: 8px 16px;
+         cursor: pointer;
+      }
+      .tab.active {
+         font-weight: bold;
+         border-bottom: 2px solid #007bff;
+      }
+      .tab-panel {
+         display: none;
+      }
+      .tab-panel.active {
+         display: block;
       }
       .slider-row {
          display: flex;
@@ -32,43 +55,87 @@
          text-align: right;
          margin-left: 10px;
       }
+      .config-input {
+         width: 100%;
+         max-width: 220px;
+         box-sizing: border-box;
+      }
+      .save-btn {
+         min-width: 80px;
+      }
    </style>
 </head>
 <body>
 <h1>Clima-Control Monitor</h1>
-<h2>Sensordaten</h2>
-<table id="sensorTable">
-   <thead>
-      <tr>
-         <th>Sensor ID</th>
-         <th>Bus</th>
-         <th>Typ</th>
-         <th>Temperatur (°C)</th>
-         <th>Luftdruck (hPa)</th>
-         <th>Feuchtigkeit (%)</th>
-         <th>CO₂ (ppm)</th>
-      </tr>
-   </thead>
-   <tbody>
-   </tbody>
-</table>
-<br>
-<div>Letzte Aktualisierung: <span id="timestamp">--:--:--</span></div>
-<hr>
-<h2>Ausgänge</h2>
-<label for="modeSwitch">Betriebsart:</label>
-<select id="modeSwitch" onchange="setMode()">
-   <option value="off">Aus</option>
-   <option value="manual">Manuell</option>
-   <option value="auto">Automatik</option>
-</select>
-<br><br>
-<div id="sliders-container"></div>
+<div class="tabs">
+  <button class="tab active" data-tab="monitor">Monitor</button>
+  <button class="tab" data-tab="setup">Ausgänge konfigurieren</button>
+</div>
+
+<section id="tab-monitor" class="tab-panel active">
+   <h2>Sensordaten</h2>
+   <table id="sensorTable">
+       <thead>
+          <tr>
+             <th>Sensor ID</th>
+             <th>Bus</th>
+             <th>Typ</th>
+             <th>Temperatur (°C)</th>
+             <th>Luftdruck (hPa)</th>
+             <th>Feuchtigkeit (%)</th>
+             <th>CO₂ (ppm)</th>
+          </tr>
+       </thead>
+       <tbody>
+       </tbody>
+   </table>
+   <br>
+   <div>Letzte Aktualisierung: <span id="timestamp">--:--:--</span></div>
+   <hr>
+   <h2>Ausgänge</h2>
+   <label for="modeSwitch">Betriebsart:</label>
+   <select id="modeSwitch" onchange="setMode()">
+       <option value="off">Aus</option>
+       <option value="manual">Manuell</option>
+       <option value="auto">Automatik</option>
+   </select>
+   <br><br>
+   <div id="sliders-container"></div>
+</section>
+
+<section id="tab-setup" class="tab-panel">
+   <h2>Ausgangs-Konfiguration</h2>
+   <table id="outputConfigTable">
+      <thead>
+         <tr>
+            <th>Ausgang</th>
+            <th>Name</th>
+            <th>Typ</th>
+            <th>Standardwert</th>
+            <th>Speichern</th>
+         </tr>
+      </thead>
+      <tbody></tbody>
+   </table>
+</section>
 
 <script>
 let SensorCount = -1;
 let OutputChannels = 8;
 let CurrentMode = "auto";
+
+function setTab(tabId) {
+ document.querySelectorAll('.tab').forEach(tab => {
+   tab.classList.toggle('active', tab.dataset.tab === tabId);
+ });
+ document.querySelectorAll('.tab-panel').forEach(panel => {
+   panel.classList.toggle('active', panel.id === 'tab-' + tabId);
+ });
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+ tab.addEventListener('click', () => setTab(tab.dataset.tab));
+});
 
 function createSliders(count) {
   const container = document.getElementById("sliders-container");
@@ -100,6 +167,67 @@ function createSliders(count) {
   }
 }
 
+function createOutputConfigRows() {
+  const tbody = document.querySelector("#outputConfigTable tbody");
+  tbody.innerHTML = "";
+
+  for (let i = 0; i < OutputChannels; i++) {
+    const row = document.createElement("tr");
+
+    const channelCell = document.createElement("td");
+    channelCell.textContent = "OUT " + (i + 1);
+
+    const nameCell = document.createElement("td");
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.maxLength = 24;
+    nameInput.className = "config-input";
+    nameInput.id = "configName" + i;
+    nameCell.appendChild(nameInput);
+
+    const typeCell = document.createElement("td");
+    const typeSelect = document.createElement("select");
+    typeSelect.id = "configType" + i;
+    typeSelect.className = "config-input";
+    [
+      { value: 1, text: 'DIGITAL' },
+      { value: 2, text: 'PWM' },
+      { value: 3, text: 'PWM_AC' }
+    ].forEach(optionDef => {
+      const option = document.createElement("option");
+      option.value = String(optionDef.value);
+      option.textContent = optionDef.text;
+      typeSelect.appendChild(option);
+    });
+    typeCell.appendChild(typeSelect);
+
+    const valueCell = document.createElement("td");
+    const valueInput = document.createElement("input");
+    valueInput.type = "number";
+    valueInput.min = "0";
+    valueInput.max = "1000";
+    valueInput.step = "1";
+    valueInput.className = "config-input";
+    valueInput.id = "configValue" + i;
+    valueCell.appendChild(valueInput);
+
+    const actionCell = document.createElement("td");
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "Save";
+    saveButton.className = "save-btn";
+    saveButton.onclick = () => saveOutputConfig(i, nameInput.value, typeSelect.value, valueInput.value);
+    actionCell.appendChild(saveButton);
+
+    row.appendChild(channelCell);
+    row.appendChild(nameCell);
+    row.appendChild(typeCell);
+    row.appendChild(valueCell);
+    row.appendChild(actionCell);
+    tbody.appendChild(row);
+  }
+}
+ 
 async function fetchSensorData() {
   try {
     const response = await fetch('/api/sensors');
@@ -148,6 +276,70 @@ function updateOutput(data) {
   }
 }
 
+async function fetchOutputConfigData() {
+  try {
+    const response = await fetch('/api/output_setup');
+    const data = await response.json();
+    updateOutputConfig(data);
+  } catch (error) {
+    console.error('Fehler beim Laden der Ausgangs-Konfiguration:', error);
+  }
+}
+
+function updateOutputConfig(data) {
+  const configChannels = data.channels || [];
+  const rows = document.querySelectorAll('#outputConfigTable tbody tr');
+  for (let i = 0; i < OutputChannels; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const nameInput = row.querySelector('input[type="text"]');
+    const typeSelect = row.querySelector('select');
+    const valueInput = row.querySelector('input[type="number"]');
+    const channel = configChannels.find(item => item.channel === i) || { name: 'OUT' + (i + 1), type: 1, value: 0 };
+    nameInput.value = channel.name || ('OUT' + (i + 1));
+    typeSelect.value = String(channel.type || 1);
+    valueInput.value = String(channel.value || 0);
+  }
+}
+
+async function saveOutputConfig(channel, name, type, value) {
+  const trimmedName = (name || '').trim();
+  const parsedType = Number(type);
+  const parsedValue = Number(value);
+
+  if (trimmedName.length === 0 || trimmedName.length > 24) {
+    alert('Der Name muss 1 bis 24 Zeichen lang sein.');
+    return;
+  }
+  if (!Number.isInteger(parsedType) || parsedType < 1 || parsedType > 3) {
+    alert('Bitte einen gültigen Ausgangstyp wählen.');
+    return;
+  }
+  if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 1000) {
+    alert('Der Standardwert muss ein Integerwert zwischen 0 und 1000 sein.');
+    return;
+  }
+
+  const response = await fetch('/set_output_setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      channel: Number(channel),
+      name: trimmedName,
+      type: parsedType,
+      value: parsedValue
+    })
+  });
+
+  if (!response.ok) {
+    alert('Speichern fehlgeschlagen.');
+    return;
+  }
+
+  fetchOutputConfigData();
+  fetchOutputData();
+}
+ 
 function setOutput(outchn, val) {
   document.getElementById("value" + outchn).textContent = val + " %";
   const slider = document.getElementById("slider" + outchn);
@@ -180,8 +372,10 @@ function fetchData() {
 }
 
 createSliders(OutputChannels);
+createOutputConfigRows();
 setInterval(fetchData, 2000);
 fetchData();
+fetchOutputConfigData();
 </script>
 </body>
 </html>

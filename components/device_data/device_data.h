@@ -3,6 +3,9 @@
    load/store device data from/to NVM
 */
 
+#ifndef DEVICE_DATA_H
+#define DEVICE_DATA_H
+
 /* --- Includes ------------------------------------------------------------ */
 #include "esp_types.h"
 #include "esp_err.h"
@@ -28,3 +31,5 @@ typedef struct
 
 esp_err_t device_data_load(T_device_data * const opt_DeviceData);
 esp_err_t device_data_store(const T_device_data * const opt_DeviceData);
+
+#endif // DEVICE_DATA_H

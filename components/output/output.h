@@ -4,6 +4,9 @@
    manage PWM controlled outputs
 */
 
+#ifndef OUTPUT_H
+#define OUTPUT_H
+
 /* --- Includes ------------------------------------------------------------ */
 #include "output_data.h"
 
@@ -32,6 +35,7 @@ esp_err_t output_init(void);
  *  - ESP_ERR_INVALIG_ARG: ou32_Channel out of range
  */
 esp_err_t output_get_setup(const uint32_t ou32_Channel, T_out_channel_data * const opt_OutSetup);
+esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data * const opt_OutSetup);
 
 /**
  * @brief Set output PWM value
@@ -56,3 +60,5 @@ esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
  *  - Others: Fail
  */
 esp_err_t output_get_pwm(const uint32_t ou32_Channel, int32_t * const ops32_OutPwm);
+
+#endif // OUTPUT_H

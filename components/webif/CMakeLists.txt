@@ -7,6 +7,7 @@ idf_component_register(
    PRIV_REQUIRES
       esp_wifi
       esp_http_server
+      esp_timer
       nvs_flash
       mdns
       sensor

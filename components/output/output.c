@@ -52,7 +52,6 @@ typedef struct
    T_out_channel_data t_OutSetup;   /*!< output setup */
    int32_t s32_OutValue;            /*!< output value */
    uint32_t u32_PwmAcPattern;       /*!< PWM (AC) pattern */
-   uint8_t u8_LEDC_Chn;             /*!< LEDC driver channel */
 } T_output;
 
 
@@ -102,6 +101,7 @@ static esp_timer_handle_t mt_pwm_timer;
 
 
 /* --- Module global prototypes -------------------------------------------- */
+static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_OutType);
 static esp_err_t m_output_install_interval_timer(void);
 static void m_output_pwm_interval_timer_cb(void* arg);
 
@@ -116,16 +116,7 @@ static void m_output_pwm_interval_timer_cb(void* arg);
  */
 esp_err_t output_init(void)
 {
-   esp_err_t err = ESP_OK;
-   uint8_t u8_LedcChannel = LEDC_CHANNEL_0;
-   gpio_config_t t_OutGpioCfg =
-   {
-      .pin_bit_mask = 0,
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = 0,
-      .pull_down_en = 1,
-      .intr_type = GPIO_INTR_DISABLE
-   };
+   esp_err_t t_Err = ESP_OK;
    static const ledc_timer_config_t ledc_timer =
    {
       .speed_mode       = LEDC_LOW_SPEED_MODE,
@@ -134,72 +125,94 @@ esp_err_t output_init(void)
       .freq_hz          = OUTPUT_PWM_FREQUENZY_HZ,
       .clk_cfg          = LEDC_AUTO_CLK
    };
-   ledc_channel_config_t ledc_channel =
-   {
-      .gpio_num       = 0,
-      .speed_mode     = LEDC_LOW_SPEED_MODE,
-      .channel        = 0,
-      .intr_type      = LEDC_INTR_DISABLE,
-      .timer_sel      = LEDC_TIMER_0,
-      .duty           = 0,
-      .hpoint         = 0
-  };
 
    // init the LEDC pwm timer
-   err = ledc_timer_config(&ledc_timer);
+   t_Err = ledc_timer_config(&ledc_timer);
 
-   if (err == ESP_OK)
+   if (t_Err == ESP_OK)
    {
       // init output PWM data
       mu8_PwmAcPhase = 0u;
+
       for (uint32_t u32_OutChannel = 0u; u32_OutChannel < OUTPUT_NUM_CHANNEL_MAX; u32_OutChannel++)
       {
-         const T_output_def * const pt_OutDef = &mt_PwmDefs.at_OutputDef[u32_OutChannel];
-         T_output * const pt_Output = &mat_Output[u32_OutChannel];
-         T_out_channel_data * const pt_OutSetup = &pt_Output->t_OutSetup;
+         T_out_channel_data * const pt_OutSetup = &mat_Output[u32_OutChannel].t_OutSetup;
 
          // get output data from NVM
          (void)output_data_load(u32_OutChannel, pt_OutSetup);
-
-         if (pt_OutSetup->u8_OutType == OUTPUT_TYPE_PWM)
-         {
-            if (u8_LedcChannel < LEDC_CHANNEL_MAX)
-            {
-               ledc_channel.gpio_num = pt_OutDef->t_OutGpio;
-               ledc_channel.channel = u8_LedcChannel;
-               ledc_channel.hpoint = pt_OutDef->u16_PhaseOffsetPwm;
-               ledc_channel_config(&ledc_channel);
-               // store LEDC channel used for this PWM output
-               pt_Output->u8_LEDC_Chn = u8_LedcChannel;
-               u8_LedcChannel++;
-            }
-            else
-            {
-               // no more LEDC channels available: configure output as type digital
-               pt_OutSetup->u8_OutType = OUTPUT_TYPE_DIGITAL;
-            }
-         }
-
-         if ((pt_OutSetup->u8_OutType == OUTPUT_TYPE_DIGITAL) || (pt_OutSetup->u8_OutType == OUTPUT_TYPE_PWM_AC))
-         {
-            // setup bitmask for all GPIO output pins used as digital output or AC type PWM
-            t_OutGpioCfg.pin_bit_mask |= (1ULL << pt_OutDef->t_OutGpio);
-         }
-
-         (void)output_set_pwm(u32_OutChannel, 0);
+         // init output
+         t_Err = (m_output_init(u32_OutChannel, pt_OutSetup->u8_OutType) != ESP_OK) ? ESP_FAIL : t_Err;
       }
-
-      // init GPIOs as outputs
-      err = gpio_config(&t_OutGpioCfg);
    }
 
-   if (err == ESP_OK)
+   if (t_Err == ESP_OK)
    {
       // install interval timer
-      err = m_output_install_interval_timer();
+      t_Err = m_output_install_interval_timer();
    }
 
-   return err;
+   return t_Err;
+}
+
+/**
+ * @brief initialize a single output channel
+ *
+ * @return esp_err_t
+ *  - ESP_OK: Success
+ *  - Others: Fail
+ */
+static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_OutType)
+{
+   esp_err_t t_Err = ESP_ERR_INVALID_ARG;
+
+   if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) &&
+       (ou8_OutType >= OUTPUT_TYPE_DIGITAL) && (ou8_OutType < OUTPUT_TYPE_MAX))
+   {
+      const T_output_def * const pt_OutDef = &mt_PwmDefs.at_OutputDef[ou32_Channel];
+
+      if (ou8_OutType == OUTPUT_TYPE_PWM)
+      {
+         if (ou32_Channel < LEDC_CHANNEL_MAX)   // PWM mode only available for the 1st LEDC_CHANNEL_MAX channels
+         {
+            ledc_channel_config_t ledc_channel =
+            {
+               .gpio_num       = pt_OutDef->t_OutGpio,
+               .speed_mode     = LEDC_LOW_SPEED_MODE,
+               .channel        = (uint8_t)ou32_Channel,
+               .intr_type      = LEDC_INTR_DISABLE,
+               .timer_sel      = LEDC_TIMER_0,
+               .duty           = 0,
+               .hpoint         = pt_OutDef->u16_PhaseOffsetPwm
+            };
+            (void)gpio_reset_pin(pt_OutDef->t_OutGpio); // required to re-config ledc_channel without warning
+            t_Err = ledc_channel_config(&ledc_channel);
+         }
+         else
+         {
+            t_Err = ESP_FAIL;
+         }
+      }
+
+      if ((ou8_OutType == OUTPUT_TYPE_DIGITAL) || (ou8_OutType == OUTPUT_TYPE_PWM_AC))
+      {
+         gpio_config_t t_OutGpioCfg =
+         {
+            .pin_bit_mask = (1ULL << pt_OutDef->t_OutGpio),
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = 0,
+            .pull_down_en = 1,
+            .intr_type = GPIO_INTR_DISABLE
+         };
+
+         t_Err = gpio_config(&t_OutGpioCfg);
+      }
+
+      mat_Output[ou32_Channel].t_OutSetup.u8_OutType = (t_Err != ESP_OK) ? OUTPUT_TYPE_INVALID : ou8_OutType;
+
+      (void)output_set_pwm(ou32_Channel, 0);
+   }
+
+   return t_Err;
 }
 
 /**
@@ -253,6 +266,23 @@ esp_err_t output_get_setup(const uint32_t ou32_Channel, T_out_channel_data * con
    return err;
 }
 
+esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data * const opt_OutSetup)
+{
+   esp_err_t err = ESP_ERR_INVALID_ARG;
+
+   if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) && (opt_OutSetup != NULL))
+   {
+      mat_Output[ou32_Channel].t_OutSetup = *opt_OutSetup;
+      err = m_output_init(ou32_Channel, opt_OutSetup->u8_OutType);
+      if (err == ESP_OK)
+      {
+         err = output_data_store(ou32_Channel, opt_OutSetup);
+      }
+   }
+
+   return err;
+}
+
 /**
  * @brief Set output PWM value
  *
@@ -283,8 +313,8 @@ esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
       else if (u8_OutType == OUTPUT_TYPE_PWM)
       {
          const uint32_t u32_ScaledPwmDuty = (uint32_t)(((os32_OutPwm * OUTPUT_PWM_RESOLUTION) + (OUTPUT_PWM_MAX/2)) / OUTPUT_PWM_MAX);
-         ledc_set_duty(LEDC_LOW_SPEED_MODE, pt_Output->u8_LEDC_Chn, u32_ScaledPwmDuty);
-         ledc_update_duty(LEDC_LOW_SPEED_MODE, pt_Output->u8_LEDC_Chn);
+         ledc_set_duty(LEDC_LOW_SPEED_MODE, (uint8_t)ou32_Channel, u32_ScaledPwmDuty);
+         ledc_update_duty(LEDC_LOW_SPEED_MODE, (uint8_t)ou32_Channel);
       }
       else if (u8_OutType == OUTPUT_TYPE_PWM_AC)
       {

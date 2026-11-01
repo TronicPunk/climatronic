@@ -32,11 +32,14 @@ static const char * mapc_OutputMode[3] = { "off", "manual", "auto" };
 
 /* --- Prototypes ---------------------------------------------------------- */
 static int32_t m_cStringValueFloat(char* const string, const int32_t size, char* const format, const float value);
+static void m_escape_json_string(const char * src, char * const dst, const size_t size);
 static esp_err_t m_get_handler_root(httpd_req_t *req);
 static esp_err_t m_get_handler_favicon(httpd_req_t *req);
 static esp_err_t m_get_handler_sensor_data(httpd_req_t *req);
 static esp_err_t m_get_handler_output(httpd_req_t *req);
+static esp_err_t m_get_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output(httpd_req_t *req);
+static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_mode(httpd_req_t *req);
 
 /* --- Implementation ------------------------------------------------------ */
@@ -57,6 +60,64 @@ static int32_t m_cStringValueFloat(char* const string, const int32_t size, char*
    return ret;
 }
 
+static void m_escape_json_string(const char * src, char * const dst, const size_t size)
+{
+   size_t idx = 0u;
+
+   if ((src != NULL) && (dst != NULL) && (size > 0u))
+   {
+      while ((*src != '\0') && (idx + 1u < size))
+      {
+         const char c = *src++;
+
+         if ((c == '\\') || (c == '"'))
+         {
+            if (idx + 2u >= size)
+            {
+               break;
+            }
+            dst[idx++] = '\\';
+            dst[idx++] = c;
+         }
+         else if (c == '\n')
+         {
+            if (idx + 2u >= size)
+            {
+               break;
+            }
+            dst[idx++] = '\\';
+            dst[idx++] = 'n';
+         }
+         else if (c == '\r')
+         {
+            if (idx + 2u >= size)
+            {
+               break;
+            }
+            dst[idx++] = '\\';
+            dst[idx++] = 'r';
+         }
+         else if (c == '\t')
+         {
+            if (idx + 2u >= size)
+            {
+               break;
+            }
+            dst[idx++] = '\\';
+            dst[idx++] = 't';
+         }
+         else
+         {
+            dst[idx++] = c;
+         }
+      }
+      dst[idx] = '\0';
+   }
+   else if (dst != NULL)
+   {
+      dst[0] = '\0';
+   }
+}
 
 /**
  * @brief provide the HTML root file index.html
@@ -183,6 +244,53 @@ static esp_err_t m_get_handler_output(httpd_req_t *req)
    return ESP_OK;
 }
 
+static esp_err_t m_get_handler_output_setup(httpd_req_t *req)
+{
+   char resp[512];
+   int32_t idx = 0;
+   int32_t ret;
+
+   ret = snprintf(resp, sizeof(resp), "{\"channels\":[");
+   if (ret > 0)
+   {
+      idx = ret;
+      for (uint32_t u32_Channel = 0; u32_Channel < OUTPUT_NUM_CHANNEL_MAX; u32_Channel++)
+      {
+         T_out_channel_data t_Setup;
+         char ac_Name[OUTPUT_NAME_MAX + 1u];
+
+         if (output_get_setup(u32_Channel, &t_Setup) == ESP_OK)
+         {
+            m_escape_json_string(t_Setup.ac_OutName, ac_Name, sizeof(ac_Name));
+            ret = snprintf(&resp[idx], sizeof(resp)-idx,
+                           "%s{\"channel\":%lu,\"name\":\"%s\",\"type\":%u,\"value\":%u}",
+                           (u32_Channel > 0u) ? "," : "",
+                           (unsigned long)u32_Channel,
+                           ac_Name,
+                           (unsigned int)t_Setup.u8_OutType,
+                           (unsigned int)t_Setup.u16_OutValueDef);
+            if ((ret > 0) && (ret < (sizeof(resp)-idx)))
+            {
+               idx += ret;
+            }
+            else
+            {
+               break;
+            }
+         }
+      }
+      ret = snprintf(&resp[idx], sizeof(resp)-idx, "]}");
+      if ((ret > 0) && (ret < (sizeof(resp)-idx)))
+      {
+         idx += ret;
+      }
+   }
+
+   httpd_resp_set_type(req, "application/json");
+   httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+   return ESP_OK;
+}
+
 /**
  * @brief set handler to set output pwm values
  *
@@ -202,6 +310,48 @@ static esp_err_t m_set_handler_output(httpd_req_t *req)
    if ((ret == 2) && (channel >= 0) && (channel <= OUTPUT_NUM_CHANNEL_MAX))
    {
       output_set_pwm(channel, pwm * 10);
+   }
+
+   httpd_resp_sendstr(req, "OK");
+   return ESP_OK;
+}
+
+static esp_err_t m_set_handler_output_setup(httpd_req_t *req)
+{
+   char buf[256];
+   int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+   if (ret <= 0) return ESP_FAIL;
+   buf[ret] = '\0';
+
+   int channel = -1;
+   int type = OUTPUT_TYPE_INVALID;
+   int value = 0;
+   char name[OUTPUT_NAME_MAX + 1u];
+   ret = sscanf(buf, "{\"channel\":%d,\"name\":\"%24[^\"]\",\"type\":%d,\"value\":%d}",
+                &channel, name, &type, &value);
+   if ((ret == 4) && (channel >= 0) && (channel < OUTPUT_NUM_CHANNEL_MAX) &&
+       (type >= OUTPUT_TYPE_DIGITAL) && (type <= OUTPUT_TYPE_PWM_AC) &&
+       (value >= OUTPUT_PWM_MIN) && (value <= OUTPUT_PWM_MAX))
+   {
+      T_out_channel_data t_Setup;
+      esp_err_t err;
+
+      strncpy(t_Setup.ac_OutName, name, OUTPUT_NAME_MAX);
+      t_Setup.ac_OutName[OUTPUT_NAME_MAX] = '\0';
+      t_Setup.u8_OutType = (uint8_t)type;
+      t_Setup.u16_OutValueDef = (uint16_t)value;
+
+      err = output_set_setup((uint32_t)channel, &t_Setup);
+      if (err != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return err;
+      }
+   }
+   else
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+      return ESP_ERR_INVALID_SIZE;
    }
 
    httpd_resp_sendstr(req, "OK");
@@ -247,14 +397,18 @@ void start_webserver(void)
    httpd_uri_t favicon = {.uri="/favicon.ico", .method=HTTP_GET, .handler=m_get_handler_favicon};
    httpd_uri_t get_sensor_data = {.uri="/api/sensors", .method=HTTP_GET, .handler=m_get_handler_sensor_data};
    httpd_uri_t get_output_data = {.uri="/api/output", .method=HTTP_GET, .handler=m_get_handler_output};
+   httpd_uri_t get_output_setup_data = {.uri="/api/output_setup", .method=HTTP_GET, .handler=m_get_handler_output_setup};
    httpd_uri_t set_output_uri = {.uri="/set_output", .method=HTTP_POST, .handler=m_set_handler_output, .user_ctx=NULL};
+   httpd_uri_t set_output_setup_uri = {.uri="/set_output_setup", .method=HTTP_POST, .handler=m_set_handler_output_setup, .user_ctx=NULL};
    httpd_uri_t set_mode_uri = {.uri="/set_mode", .method=HTTP_POST, .handler=m_set_handler_mode, .user_ctx=NULL};
 
    httpd_register_uri_handler(server, &root);
    httpd_register_uri_handler(server, &favicon);
    httpd_register_uri_handler(server, &get_sensor_data);
    httpd_register_uri_handler(server, &get_output_data);
+   httpd_register_uri_handler(server, &get_output_setup_data);
    httpd_register_uri_handler(server, &set_output_uri);
+   httpd_register_uri_handler(server, &set_output_setup_uri);
    httpd_register_uri_handler(server, &set_mode_uri);
 }
 
