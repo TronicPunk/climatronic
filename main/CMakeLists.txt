@@ -16,12 +16,13 @@ idf_component_register(
       iic
       iic_mux
       iic_eeprom
+      device_data
+      system_data
       sensor
       BME280
       BME68x
       SCD4x
       output
-      device_data
       webif
       timer
       esp_wifi

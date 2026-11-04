@@ -7,15 +7,15 @@
 
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include "sensor_data.h"
+#include "system_data.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 
-#define ICC_BUS_COUNT                     6u       // number of available IIC busses
 #define SENSOR_TYPE_COUNT                 3u       // number of different supported IIC sensors
 // note: SENSOR_COUNT_MAX must be <= SENSOR_NVM_DATA_MAX to guarantee data storage for each sensor
-#define SENSOR_COUNT_MAX                  16u      // max. number of supported sensors
+#define SENSOR_COUNT_MAX                  16u      // max. number of connected sensors
 #define SENSOR_MEASUREMENT_TASK_CYCLE_MS  1000u    // sensor measurement task cycle time in ms
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
@@ -33,16 +33,11 @@ static TimerHandle_t mt_SensorTimer;
 
 static const T_sensor_descriptor * mapt_SensorTypes[SENSOR_TYPE_COUNT] =
 {
-   &gt_BME280_descriptor,
+   &gt_BME280_descriptor,  // this sensor driver supports BME280 and also BMP280 (without humidity measurement)
    &gt_BME680_descriptor,
    &gt_SCD41_descriptor,
 };
 
-// TBD: move to NVM
-static const uint32_t mau32_IicFreqHz[ICC_BUS_COUNT] =
-{
-   400000u, 400000u, 400000u, 400000u, 400000u, 400000u
-};
 
 /* -- Implementation ------------------------------------------------------------------------------------------------ */
 
@@ -103,9 +98,11 @@ static esp_err_t m_sensor_detect(void)
    }
    mu16_SensorCount = 0;
 
-   for (uint32_t u32_IicBus = 0u; u32_IicBus < ICC_BUS_COUNT; u32_IicBus++)
+   for (uint32_t u32_IicBus = 0u; u32_IicBus < I2C_BUS_COUNT; u32_IicBus++)
    {
-      const uint32_t u32_IicFreqHz = mau32_IicFreqHz[u32_IicBus];
+      uint8_t u8_I2cFreq;
+      (void)system_data_get_i2c_freq(u32_IicBus, &u8_I2cFreq);
+      const uint32_t u32_IicFreqHz = (u8_I2cFreq == I2C_BUS_FREQ_400K) ? 400000u : 100000u;
 
       // probe for all possible sensors at this IIC bus
       // u32_SensorTypeIdx 0 = BME280/BMP280, 1 = BME680, 2 = SCD41
@@ -125,7 +122,7 @@ static esp_err_t m_sensor_detect(void)
 
             if (mu16_SensorCount >= SENSOR_COUNT_MAX)
             {
-               u32_IicBus = ICC_BUS_COUNT;
+               u32_IicBus = I2C_BUS_COUNT;
                u32_SensorTypeIdx = SENSOR_TYPE_COUNT;
                break;
             }

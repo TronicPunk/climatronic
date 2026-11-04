@@ -63,6 +63,7 @@ esp_err_t sensor_data_load(void)
       {
          // invalidate data
          pt_SensorNvmDataCrc->t_SensorNvmData = mt_SensorNvmDataEmpty;
+         mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
       }
    }
 
@@ -185,9 +186,12 @@ esp_err_t sensor_data_set_name(const uint16_t ou16_SensorIdx, const char * const
       if (u32_Entry < SENSOR_NVM_DATA_MAX)
       {
          T_sensor_nvm_data * pt_SensorNvmData = &mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData;
-         (void)strncpy(pt_SensorNvmData->ac_SensorName, oac_SensorName, SENSOR_NAME_LEN_MAX);
-         pt_SensorNvmData->ac_SensorName[SENSOR_NAME_LEN_MAX] = '\0';
-         mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         if (strncmp(pt_SensorNvmData->ac_SensorName, oac_SensorName, SENSOR_NAME_LEN_MAX) != 0)
+         {
+            (void)strncpy(pt_SensorNvmData->ac_SensorName, oac_SensorName, SENSOR_NAME_LEN_MAX);
+            pt_SensorNvmData->ac_SensorName[SENSOR_NAME_LEN_MAX] = '\0';
+            mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         }
          t_Err = ESP_OK;
       }
    }
@@ -211,8 +215,11 @@ esp_err_t sensor_data_set_flags(const uint16_t ou16_SensorIdx, const uint8_t ou8
       if (u32_Entry < SENSOR_NVM_DATA_MAX)
       {
          T_sensor_nvm_data * pt_SensorNvmData = &mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData;
-         pt_SensorNvmData->u8_SensorFlags = ou8_SensorFlags;
-         mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         if (pt_SensorNvmData->u8_SensorFlags != ou8_SensorFlags)
+         {
+            pt_SensorNvmData->u8_SensorFlags = ou8_SensorFlags;
+            mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         }
          t_Err = ESP_OK;
       }
    }

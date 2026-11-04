@@ -7,6 +7,7 @@ idf_component_register(
    PRIV_REQUIRES
       nvm_data
       iic_eeprom
+      system_data
       BME280
       BME68x
       SCD4x

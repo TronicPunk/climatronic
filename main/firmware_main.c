@@ -21,6 +21,7 @@
 #include "iic.h"
 #include "iic_mux.h"
 #include "iic_eeprom.h"
+#include "system_data.h"
 #include "sensor.h"
 #include "output.h"
 #include "timer.h"
@@ -80,7 +81,7 @@ static void m_menu_main(void)
    // display main menu
    clr_scr();
    printf("------------------------------------------\r\n");
-   printf(" Climatronic Testsoftware V%d.%02dr%d / %s\r\n", VERSION_MAJOR, VERSION_MINOR, VERSION_RELEASE, __DATE__);
+   printf(" Climatronic Firmware V%d.%02dr%d / %s\r\n", VERSION_MAJOR, VERSION_MINOR, VERSION_RELEASE, __DATE__);
    printf("------------------------------------------\r\n\n");
    printf(" [1]  System\r\n");
    printf(" [2]  Sensor values (%u sensors found)\r\n", u16_SensorCnt);
@@ -111,18 +112,22 @@ void app_main(void)
    iic_mux_init();      // init the IIC multiplexer
    iic_eeprom_init();   // init the IIC eeprom
 
+   err = system_data_load();
+   if (err == ESP_FAIL)
+   {
+      ESP_LOGI(TAG, "system_data error %d\r\n", err);
+   }
+
    err = output_init();
    if (err != ESP_OK)
    {
       ESP_LOGI(TAG, "output_init error %d\r\n", err);
-      get_key();
    }
 
    err = sensor_init_task();
    if (err != ESP_OK)
    {
       ESP_LOGI(TAG, "no sensor connected!\r\n", err);
-      get_key();
    }
 
    while (true)

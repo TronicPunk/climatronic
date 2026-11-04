@@ -172,17 +172,20 @@ int32_t sensor_setup(void)
    else
    {
       T_sensor_info t_SensorInfo;
+      T_sensor_nvm_data * pt_SensorData;
       uint16_t u16_SensorIdx = 0;
       uint8_t u8_Key = 0u;
 
       printf(" [1] select sensor-\r\n");
       printf(" [2] select sensor+\r\n");
       printf(" [3] edit name\r\n");
+      printf(" [4] toggle RD flag\r\n");
       printf("[ESC] terminate setup");
 
       serial_clear_rx_buf(); // clear RX buffer
 
       (void)sensor_get_info(u16_SensorIdx, &t_SensorInfo);
+      pt_SensorData = sensor_data_get(u16_SensorIdx);
 
       while (u8_Key != 0x1Bu)
       {
@@ -201,6 +204,7 @@ int32_t sensor_setup(void)
                }
             }
             (void)sensor_get_info(u16_SensorIdx, &t_SensorInfo);
+            pt_SensorData = sensor_data_get(u16_SensorIdx);
          }
          if (u8_Key == '3')
          {
@@ -208,9 +212,9 @@ int32_t sensor_setup(void)
             char ac_SensorName[SENSOR_NAME_LEN_MAX+1];
             memset(ac_SensorName, ' ', SENSOR_NAME_LEN_MAX);
             ac_SensorName[SENSOR_NAME_LEN_MAX] = 0;
-            set_cursor(18u, 9u);
+            set_cursor(18u, 10u);
             printf("%s",ac_SensorName);
-            set_cursor(18u, 9u);
+            set_cursor(18u, 10u);
             t_Err = get_string((uint8_t *)ac_SensorName, SENSOR_NAME_LEN_MAX);
             if (t_Err == ESP_OK)
             {
@@ -218,12 +222,20 @@ int32_t sensor_setup(void)
                (void)sensor_data_store();
             }
          }
+         if (u8_Key == '4')
+         {
+            uint8_t u8_SensorFlags = pt_SensorData->u8_SensorFlags;
+            u8_SensorFlags ^= SENSOR_FLAGS_REMOTE_RD; // toggle RD flag
+            (void)sensor_data_set_flags(u16_SensorIdx, u8_SensorFlags);
+            (void)sensor_data_store();
+         }
 
          // print sensor info
-         set_cursor(0u, 9u);
-         printf("SENSOR%2u: name = %s                       ", u16_SensorIdx+1u, t_SensorInfo.s_Name);
-         set_cursor(11u, 10u);
-         printf("type = %s, bus = %u             ", t_SensorInfo.pt_Sensor->s_Type, t_SensorInfo.u8_IicBus);
+         set_cursor(0u, 10u);
+         printf("SENSOR%2u: name = %s                       ", u16_SensorIdx+1u, pt_SensorData->ac_SensorName);
+         set_cursor(11u, 11u);
+         printf("type = %s, bus = %u, rd = %u             \n", t_SensorInfo.pt_Sensor->s_Type,
+                t_SensorInfo.u8_IicBus, pt_SensorData->u8_SensorFlags);
 
          u8_Key = get_key();
       }

@@ -10,6 +10,7 @@
 #include <string.h>
 #include "system_setup.h"
 #include "eeprom_test.h"
+#include "system_data.h"
 #include "iic_eeprom.h"
 #include "inout.h"
 #include "timer.h"
@@ -27,6 +28,7 @@
 
 static void m_menu_system(void);
 static void m_toggle_usens_en(void);
+static int32_t m_setup_i2c_bus_freq(void);
 static int32_t m_wifi_connection_health(void);
 static void m_sys_sw_reset(void);
 
@@ -38,10 +40,11 @@ const T_Menu gt_MenuSystemSetup =
    MENU_MAGIC,       // menu structure identification
    &m_menu_system,   // show system setup menu
    NULL,             // menu exit function
-   4,                // number of menu entries
+   5,                // number of menu entries
    {
       (void *)&m_toggle_usens_en,         // toggle signal usens_en
       (void *)&gt_MenuEepromTest,         // menu EEPROM test
+      (void *)&m_setup_i2c_bus_freq,      // setup I2C bus frequency
       (void *)&m_wifi_connection_health,  // WIFI connection information
       (void *)&m_sys_sw_reset,            // ECU software reset
    }
@@ -60,8 +63,9 @@ static void m_menu_system(void)
    printf("      Usens  = %lu mV\r\n", adc_read_mv(ADC_USENS));
    printf("      Button = 0x%02lX\r\n", io_get_switch_button());
    printf(" [2]  Test EEPROM\r\n");
-   printf(" [3]  WIFI Status\r\n");
-   printf(" [4]  Reset\r\n\n");
+   printf(" [3]  Set I2C bus frequency\r\n");
+   printf(" [4]  WIFI Status\r\n");
+   printf(" [5]  Reset\r\n\n");
    printf("[ESC] return to previous menu\r\n");
 }
 
@@ -77,6 +81,46 @@ static void m_toggle_usens_en(void)
       iic_eeprom_is_ready();
    }
 }
+
+static int32_t m_setup_i2c_bus_freq(void)
+{
+   const char * as_I2cBusFreq[2] = { "100000", "400000" };
+   uint32_t u32_I2cBus;
+   uint8_t u8_I2cBusFreq;
+   uint8_t u8_Key = 0u;
+
+   clr_scr();
+   printf("------------------------------------------\r\n");
+   printf(" Setup I2C bus frequency\r\n");
+   printf("------------------------------------------\r\n\n");
+   for (u32_I2cBus = 0; u32_I2cBus < I2C_BUS_COUNT; u32_I2cBus++)
+   {
+      const uint32_t u32_I2cBusNum = u32_I2cBus+1u;
+      system_data_get_i2c_freq(u32_I2cBus, &u8_I2cBusFreq);
+      printf(" [%lu]  Change I2C bus_%lu frequency [%s]\r\n", u32_I2cBusNum, u32_I2cBusNum, as_I2cBusFreq[u8_I2cBusFreq]);
+   }
+   printf("\n[ESC] Terminate\n");
+
+   while (u8_Key != 0x1Bu)
+   {
+      if ((u8_Key >= '1') && (u8_Key < '1' + I2C_BUS_COUNT))
+      {
+         u32_I2cBus = u8_Key - '1';
+         system_data_get_i2c_freq(u32_I2cBus, &u8_I2cBusFreq);
+         u8_I2cBusFreq = (u8_I2cBusFreq == I2C_BUS_FREQ_100K) ? I2C_BUS_FREQ_400K : I2C_BUS_FREQ_100K;
+         system_data_set_i2c_freq(u32_I2cBus, u8_I2cBusFreq);
+         system_data_store();
+         set_cursor(34u, 5u+u32_I2cBus);
+         printf("%s\n", as_I2cBusFreq[u8_I2cBusFreq]);
+      }
+
+      delay_us(500000u);// refresh after 0.5sec
+      u8_Key = get_key_nowait();
+   }
+
+   return 1;
+}
+
 
 static int32_t m_wifi_connection_health(void)
 {

@@ -56,6 +56,7 @@ esp_err_t output_data_load(const uint32_t ou32_Channel, T_out_channel_data * con
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
    T_out_channel_data_crc t_OutChannelSetupCrc;
+   T_out_channel_data * const pt_OutChannelSetup = &t_OutChannelSetupCrc.t_OutChannelSetup;
    bool q_DataValid = false;
 
    if (ou32_Channel < OUTPUT_NUM_CHANNEL_MAX)
@@ -68,9 +69,9 @@ esp_err_t output_data_load(const uint32_t ou32_Channel, T_out_channel_data * con
       {
          esp_err_t t_ErrStore;
 
-         t_OutChannelSetupCrc.t_OutChannelSetup = mt_OutChannelSetupDef;
+         *pt_OutChannelSetup = mt_OutChannelSetupDef;
          // create default output name OUT1...OUT8
-         t_OutChannelSetupCrc.t_OutChannelSetup.ac_OutName[3] = (char)('1' + ou32_Channel);
+         pt_OutChannelSetup->ac_OutName[3] = (char)('1' + ou32_Channel);
          t_ErrStore = nvm_data_store(u32_NvmAddr, sizeof(T_out_channel_data_crc), &t_OutChannelSetupCrc);
 
          q_DataValid = (t_ErrStore == ESP_OK) ? true : false;
@@ -84,7 +85,7 @@ esp_err_t output_data_load(const uint32_t ou32_Channel, T_out_channel_data * con
 
    if (q_DataValid)
    {
-      *opt_OutChannelSetup = t_OutChannelSetupCrc.t_OutChannelSetup;
+      *opt_OutChannelSetup = *pt_OutChannelSetup;
    }
    else
    {
