@@ -67,7 +67,6 @@ typedef struct
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
 esp_err_t sensor_init_task(void);   // init the sensor measurement process
-esp_err_t sensor_detect(void);      // scan all I2C busses and init found sensors
 uint16_t  sensor_get_count(void);   // get number of initialized sensors
 esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const opt_SensorInfo);
 esp_err_t sensor_process_data(const uint16_t ou16_SensorIdx);

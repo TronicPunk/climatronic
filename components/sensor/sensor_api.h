@@ -12,7 +12,9 @@
 #include "sensor.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define SENSOR_IIC_ADDR_MAX   7u    // max. number of supported IIC addresses per sensor
+#define SENSOR_IIC_ADDR_MAX      3u    // max. number of supported IIC addresses per sensor
+#define SENSOR_NAME_LEN_MAX      24    // max. length of sensor name string (without \0)
+#define SENSOR_FLAGS_REMOTE_RD   0x01u // Sensor flag: Sensor data are remote readable (visable)
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
@@ -26,13 +28,19 @@ typedef struct
    const uint8_t au8_IicAddr[SENSOR_IIC_ADDR_MAX];    // array of supported IIC addresses
 } T_sensor_descriptor;
 
+typedef struct
+{
+   uint16_t u16_SensorId;                             // internal sensor ID + IIC bus number
+   uint8_t  u8_SensorFlags;                           // sensor flags
+   char     ac_SensorName[SENSOR_NAME_LEN_MAX+1];     // sensor name string (max. 24 char + \0)
+} T_sensor_nvm_data;
+
 typedef struct t_sensor_instance
 {
-   struct t_sensor_instance * pt_Next;                // pointer to next sensor instance, NULL for last sensor instance
    uint64_t u64_CallTimeUs;                           // next call (absolute system time in usec)
    T_sensor_data t_SensorData;                        // sensor data sample
    const T_sensor_descriptor * pt_SensorDescriptor;   // pointer to sensor descriptor
-   char * s_SensorName;                               // sensor name
+   T_sensor_nvm_data * pt_SensorNvmData;              // pointer to sensor NVM data
    void * pv_Handle;                                  // sensor handle with driver specific information
    uint32_t u32_Parameter;                            // parameter/result for sensor commands
    uint32_t u32_IicFreq;                              // connected IIC SCL frequency
@@ -53,5 +61,7 @@ typedef struct _sensor_api
 /* -- Global Variables ---------------------------------------------------------------------------------------------- */
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
+
+T_sensor_instance* sensor_get_handle(const uint16_t ou16_SensorIdx);
 
 #endif /* SENSOR_API_H */

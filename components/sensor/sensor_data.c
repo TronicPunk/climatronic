@@ -7,115 +7,267 @@
 
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include "sensor_data.h"
+#include "nvm_data.h"
+#include <string.h>
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define I2C_BUS_INVALID    (0xFFu)  // number of availabel I2C sensor busses
-#define SENSOR_NAME_COUNT  (6u)     // number of named I2C sensors
+
+#define SENSOR_NVM_DATA_MAX    16    // max. number of sensor entries in data base
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
+// sensor nvm data set incl. CRC
+typedef struct
+{
+   uint32_t u32_CRC32;                 // CRC32
+   T_sensor_nvm_data t_SensorNvmData;  // sensor nvm data
+} T_sensor_nvm_data_crc;
+
+_Static_assert(sizeof(T_sensor_nvm_data_crc) == NVM_DATA_SENSOR_SIZE, "T_sensor_nvm_data_crc must be of size NVM_DATA_SENSOR_SIZE byte");
+
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
+
+static T_sensor_instance* m_sensor_data_get_handle_by_sensor_id(const uint16_t ou16_SensorId);
+static uint16_t m_sensor_data_get_sensor_id(const T_sensor_instance * opt_Sensor);
+static uint32_t m_sensor_data_search_entry(const uint16_t ou16_SensorId);
+static T_sensor_nvm_data * m_sensor_data_create_default(const uint32_t ou32_Entry, const T_sensor_instance * opt_Sensor);
 
 /* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
 
-static uint16_t mu16_SensorCount = 0u;  // number of installed (detected) sensors
-static T_sensor_instance * mpt_SensorList = NULL;
-static T_sensor_instance * mpt_SensorListEnd = NULL;
-
-
-const T_sensor_bus_init gat_SensorbusInit[ICC_BUS_COUNT +1u] =
+static const T_sensor_nvm_data mt_SensorNvmDataEmpty =
 {
-   { .u8_IicBus = 0u, .u32_IicFreqHz = 400000u },
-   { .u8_IicBus = 1u, .u32_IicFreqHz = 400000u },
-   { .u8_IicBus = 2u, .u32_IicFreqHz = 400000u },
-   { .u8_IicBus = 3u, .u32_IicFreqHz = 400000u },
-   { .u8_IicBus = 4u, .u32_IicFreqHz = 400000u },
-   { .u8_IicBus = 5u, .u32_IicFreqHz = 400000u },
-   // sensor bus init list terminator
-   { .u8_IicBus = I2C_BUS_INVALID, .u32_IicFreqHz = 0u }
+   .u16_SensorId = 0u,
+   .u8_SensorFlags = 0u,
+   .ac_SensorName = { 0u },
 };
 
-const T_sensor_descriptor * gapt_SensorTypes[SENSOR_TYPE_COUNT +1u] =
-{
-   &gt_BME280_descriptor,
-   &gt_BME680_descriptor,
-   &gt_SCD41_descriptor,
-   // sensor descriptor list terminator
-   NULL
-};
+static uint32_t mu32_NewData = 0u;
+static T_sensor_nvm_data_crc mat_SensorNvmDataCrc[SENSOR_NVM_DATA_MAX];
+
 
 /* -- Implementation ------------------------------------------------------------------------------------------------ */
 
 /**
- * add a new sensor instance to the sensor list
+ * load sensor data base from NVM
  */
-void sensor_data_register_sensor(T_sensor_instance * const opt_NewSensor)
+esp_err_t sensor_data_load(void)
 {
-   opt_NewSensor->pt_Next = NULL;
-
-   if (mpt_SensorList == NULL)
+   for (uint32_t u32_Entry = 0u; u32_Entry < SENSOR_NVM_DATA_MAX; u32_Entry++)
    {
-      mpt_SensorList = opt_NewSensor;
-   }
-   else
-   {
-      mpt_SensorListEnd->pt_Next = opt_NewSensor;
-   }
+      const uint32_t u32_NvmAddr = NVM_DATA_SENSOR_ADDR + (u32_Entry * sizeof(T_sensor_nvm_data_crc));
+      T_sensor_nvm_data_crc * const pt_SensorNvmDataCrc = &mat_SensorNvmDataCrc[u32_Entry];
 
-   mpt_SensorListEnd = opt_NewSensor;
-   mu16_SensorCount++;
-}
-
-
-/**
- * return number of registered sensors
- */
-uint16_t sensor_data_get_count(void)
-{
-   return mu16_SensorCount;
-}
-
-/**
- * Return sensor handle. Return NULL if ou16_SensorIdx is out of range
- */
-T_sensor_instance* sensor_data_get_handle_idx(const uint16_t ou16_SensorIdx)
-{
-   T_sensor_instance* pt_SensorInstance = NULL;
-
-   if ((ou16_SensorIdx < mu16_SensorCount) && (mu16_SensorCount > 0u))
-   {
-      pt_SensorInstance = mpt_SensorList;
-
-      for (uint16_t u16_SensorCnt = 0u; u16_SensorCnt < ou16_SensorIdx; u16_SensorCnt++)
+      // read eeprom data
+      const esp_err_t t_Err = nvm_data_load(u32_NvmAddr, sizeof(T_sensor_nvm_data_crc), pt_SensorNvmDataCrc);
+      if (t_Err != ESP_OK)
       {
-         pt_SensorInstance = pt_SensorInstance->pt_Next;
+         // invalidate data
+         pt_SensorNvmDataCrc->t_SensorNvmData = mt_SensorNvmDataEmpty;
       }
    }
 
-   return pt_SensorInstance;
+   return ESP_OK;
 }
 
 /**
- * Return sensor handle from IIC bus number and senor ID. Return NULL if sensor does not exist
+ * store sensor data base into NVM
  */
-T_sensor_instance* sensor_data_get_handle_bus_id(const uint8_t ou8_IicBus, const uint16_t ou16_SensorId)
+esp_err_t sensor_data_store(void)
 {
-   T_sensor_instance* pt_SensorInstance = mpt_SensorList;
-
-   while (pt_SensorInstance != NULL)
+   for (uint32_t u32_Entry = 0u; u32_Entry < SENSOR_NVM_DATA_MAX; u32_Entry++)
    {
-      const uint8_t u8_IicBus = pt_SensorInstance->u8_IicBus;
-      const uint16_t u16_SensorId = pt_SensorInstance->pt_SensorDescriptor->pt_Sensor->u16_SensorId;
+      const uint32_t u32_NewDataMsk = (1u << u32_Entry);
 
-      if ((u8_IicBus == ou8_IicBus) && (u16_SensorId == ou16_SensorId))
+      if ((mu32_NewData & u32_NewDataMsk) != 0u)
       {
-         break;
+         const uint32_t u32_NvmAddr = NVM_DATA_SENSOR_ADDR + (u32_Entry * sizeof(T_sensor_nvm_data_crc));
+         T_sensor_nvm_data_crc * const pt_SensorNvmDataCrc = &mat_SensorNvmDataCrc[u32_Entry];
+
+         // store eeprom data
+         const esp_err_t t_ErrStore = nvm_data_store(u32_NvmAddr, sizeof(T_sensor_nvm_data_crc), pt_SensorNvmDataCrc);
+
+         if (t_ErrStore == ESP_OK)
+         {
+            mu32_NewData &= ~u32_NewDataMsk;    // clear new data flag for this entry
+         }
+      }
+   }
+
+   return (mu32_NewData != 0u) ? ESP_FAIL : ESP_OK;
+}
+
+/**
+ * return sensor data for sensor adressed by ou16_SensorIdx
+ */
+T_sensor_nvm_data * sensor_data_get(const uint16_t ou16_SensorIdx)
+{
+   T_sensor_nvm_data * pt_SensorNvmData = NULL;
+   T_sensor_instance * const pt_Sensor = sensor_get_handle(ou16_SensorIdx);
+
+   if (pt_Sensor != NULL)
+   {
+      const uint16_t u16_SensorId = m_sensor_data_get_sensor_id(pt_Sensor);
+
+      // search for existing entry
+      uint32_t u32_Entry = m_sensor_data_search_entry(u16_SensorId);
+
+      if (u32_Entry < SENSOR_NVM_DATA_MAX)
+      {
+         pt_SensorNvmData = &mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData;
       }
       else
       {
-         pt_SensorInstance = pt_SensorInstance->pt_Next;
+         // if not exist: use next free entry and create default sensor name
+         u32_Entry = m_sensor_data_search_entry(0u);
+
+         if (u32_Entry < SENSOR_NVM_DATA_MAX)
+         {
+            pt_SensorNvmData = m_sensor_data_create_default(u32_Entry, pt_Sensor);
+         }
+         else
+         {
+            // no empty entries: reuse 1st unused entry and create default sensor data
+            // all entries in use: return NULL (should never happen, do not use >= SENSOR_NVM_DATA_MAX sensors per device)
+            for (u32_Entry = 0u; u32_Entry < SENSOR_NVM_DATA_MAX; u32_Entry++)
+            {
+               const uint16_t u16_SensorId = mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData.u16_SensorId;
+               T_sensor_instance * const pt_Sensor = m_sensor_data_get_handle_by_sensor_id(u16_SensorId);
+
+               if (pt_Sensor == NULL)
+               {
+                  pt_SensorNvmData = m_sensor_data_create_default(u32_Entry, pt_Sensor);
+                  break;
+               }
+            }
+         }
       }
    }
 
-   return pt_SensorInstance;
+   return pt_SensorNvmData;
+}
+
+/**
+ * Return sensor handle from internal sensor ID. Return NULL if sensor does not exist
+ */
+static T_sensor_instance* m_sensor_data_get_handle_by_sensor_id(const uint16_t ou16_SensorId)
+{
+   T_sensor_instance * pt_SensorFound = NULL;
+   const uint16_t u16_SensorCount = sensor_get_count();
+
+   for (uint32_t u32_Sensor = 0u; u32_Sensor < u16_SensorCount; u32_Sensor++)
+   {
+      T_sensor_instance * const pt_Sensor = sensor_get_handle(u32_Sensor);
+      const uint16_t u16_SensorId = m_sensor_data_get_sensor_id(pt_Sensor);
+      if (u16_SensorId == ou16_SensorId)
+      {
+         pt_SensorFound = pt_Sensor;
+         break;
+      }
+   }
+
+   return pt_SensorFound;
+}
+
+/**
+ * set sensor name for sensor addressed by ou16_SensorIdx
+ */
+esp_err_t sensor_data_set_name(const uint16_t ou16_SensorIdx, const char * const oac_SensorName)
+{
+   esp_err_t t_Err = ESP_ERR_INVALID_ARG;
+   T_sensor_instance * const pt_Sensor = sensor_get_handle(ou16_SensorIdx);
+   const uint32_t u32_SensorNameLen = strnlen(oac_SensorName, SENSOR_NAME_LEN_MAX + 1u);
+
+   if ((pt_Sensor != NULL) && (u32_SensorNameLen > 0u) && (u32_SensorNameLen <= SENSOR_NAME_LEN_MAX))
+   {
+      const uint16_t u16_SensorId = m_sensor_data_get_sensor_id(pt_Sensor);
+      const uint32_t u32_Entry = m_sensor_data_search_entry(u16_SensorId);
+
+      if (u32_Entry < SENSOR_NVM_DATA_MAX)
+      {
+         T_sensor_nvm_data * pt_SensorNvmData = &mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData;
+         (void)strncpy(pt_SensorNvmData->ac_SensorName, oac_SensorName, SENSOR_NAME_LEN_MAX);
+         pt_SensorNvmData->ac_SensorName[SENSOR_NAME_LEN_MAX] = '\0';
+         mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         t_Err = ESP_OK;
+      }
+   }
+
+   return t_Err;
+}
+
+/**
+ * set sensor flags for sensor addressed by ou16_SensorIdx
+ */
+esp_err_t sensor_data_set_flags(const uint16_t ou16_SensorIdx, const uint8_t ou8_SensorFlags)
+{
+   esp_err_t t_Err = ESP_ERR_INVALID_ARG;
+   T_sensor_instance * const pt_Sensor = sensor_get_handle(ou16_SensorIdx);
+
+   if (pt_Sensor != NULL)
+   {
+      const uint16_t u16_SensorId = m_sensor_data_get_sensor_id(pt_Sensor);
+      const uint32_t u32_Entry = m_sensor_data_search_entry(u16_SensorId);
+
+      if (u32_Entry < SENSOR_NVM_DATA_MAX)
+      {
+         T_sensor_nvm_data * pt_SensorNvmData = &mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData;
+         pt_SensorNvmData->u8_SensorFlags = ou8_SensorFlags;
+         mu32_NewData |= (1u << u32_Entry);  // set new data flag for this entry
+         t_Err = ESP_OK;
+      }
+   }
+
+   return t_Err;
+}
+
+/**
+ * get internal sensor ID as data set identifier
+ */
+static uint16_t m_sensor_data_get_sensor_id(const T_sensor_instance * opt_Sensor)
+{
+   const uint16_t u16_SensorId = opt_Sensor->pt_SensorDescriptor->pt_Sensor->u16_SensorId;
+   return (uint16_t)((u16_SensorId & 0xFFF0u) | (opt_Sensor->u8_IicBus & 0x000Fu));
+}
+
+/**
+ * search for existing name entry
+ */
+static uint32_t m_sensor_data_search_entry(const uint16_t ou16_SensorId)
+{
+   uint32_t u32_Entry;
+
+   for (u32_Entry = 0u; u32_Entry < SENSOR_NVM_DATA_MAX; u32_Entry++)
+   {
+      if (mat_SensorNvmDataCrc[u32_Entry].t_SensorNvmData.u16_SensorId == ou16_SensorId)
+      {
+         break;
+      }
+   }
+
+   return u32_Entry;
+}
+
+/**
+ * create default sensor data for dataset ou32_Entry
+ */
+static T_sensor_nvm_data * m_sensor_data_create_default(const uint32_t ou32_Entry, const T_sensor_instance * opt_Sensor)
+{
+   T_sensor_nvm_data * const pt_SensorNvmData = &mat_SensorNvmDataCrc[ou32_Entry].t_SensorNvmData;
+   uint32_t u32_SensorNameLen;
+
+   // create default sensor name in format "<SensorType>_BUS<x>":
+   // <SensorType>=sensor type string, <x>=I2C bus number
+   const char * const s_SensorType = opt_Sensor->pt_SensorDescriptor->pt_Sensor->s_Type;
+   (void)sprintf(pt_SensorNvmData->ac_SensorName, "%s_BUS%u", s_SensorType, opt_Sensor->u8_IicBus);
+   u32_SensorNameLen = strnlen(pt_SensorNvmData->ac_SensorName, SENSOR_NAME_LEN_MAX +1u);
+   // fill unused string array data with \0
+   (void)memset(&pt_SensorNvmData->ac_SensorName[u32_SensorNameLen+1u], 0, SENSOR_NAME_LEN_MAX-u32_SensorNameLen);
+
+   // setup sensor data
+   pt_SensorNvmData->u16_SensorId = m_sensor_data_get_sensor_id(opt_Sensor);
+   pt_SensorNvmData->u8_SensorFlags = SENSOR_FLAGS_REMOTE_RD;
+
+   mu32_NewData |= (1u << ou32_Entry);  // set new data flag for this entry
+
+   return pt_SensorNvmData;
 }

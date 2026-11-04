@@ -164,13 +164,14 @@ esp_err_t output_init(void)
 static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_OutType)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
+   const uint8_t u8_OutType = ou8_OutType & OUTPUT_TYPE_MASK;
 
    if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) &&
-       (ou8_OutType >= OUTPUT_TYPE_DIGITAL) && (ou8_OutType < OUTPUT_TYPE_MAX))
+       (u8_OutType >= OUTPUT_TYPE_DIGITAL) && (u8_OutType < OUTPUT_TYPE_MAX))
    {
       const T_output_def * const pt_OutDef = &mt_PwmDefs.at_OutputDef[ou32_Channel];
 
-      if (ou8_OutType == OUTPUT_TYPE_PWM)
+      if (u8_OutType == OUTPUT_TYPE_PWM)
       {
          if (ou32_Channel < LEDC_CHANNEL_MAX)   // PWM mode only available for the 1st LEDC_CHANNEL_MAX channels
          {
@@ -193,7 +194,7 @@ static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_Ou
          }
       }
 
-      if ((ou8_OutType == OUTPUT_TYPE_DIGITAL) || (ou8_OutType == OUTPUT_TYPE_PWM_AC))
+      if ((u8_OutType == OUTPUT_TYPE_DIGITAL) || (u8_OutType == OUTPUT_TYPE_PWM_AC))
       {
          gpio_config_t t_OutGpioCfg =
          {
@@ -300,7 +301,7 @@ esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
    if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) && (os32_OutPwm >= OUTPUT_PWM_MIN) && (os32_OutPwm <= OUTPUT_PWM_MAX))
    {
       T_output * const pt_Output = &mat_Output[ou32_Channel];
-      const uint8_t u8_OutType = pt_Output->t_OutSetup.u8_OutType;
+      const uint8_t u8_OutType = pt_Output->t_OutSetup.u8_OutType & OUTPUT_TYPE_MASK;
 
       pt_Output->s32_OutValue = os32_OutPwm;
 
@@ -370,7 +371,7 @@ static void m_output_pwm_interval_timer_cb(void* arg)
    {
       T_output * const pt_Output = &mat_Output[u32_Channel];
 
-      if (pt_Output->t_OutSetup.u8_OutType == OUTPUT_TYPE_PWM_AC)
+      if ((pt_Output->t_OutSetup.u8_OutType & OUTPUT_TYPE_MASK) == OUTPUT_TYPE_PWM_AC)
       {
          const T_output_def * const pt_OutDef = &mt_PwmDefs.at_OutputDef[u32_Channel];
          uint32_t u32_OutLevel;

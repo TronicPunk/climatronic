@@ -8,14 +8,13 @@
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include <string.h>
 #include "bme280_interface.h"
-#include "sensor_name.h"
 #include "iic.h"
 #include "iic_mux.h"
 #include "timer.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define BME280_ID                   0xE280u     // BME280 sensor ID
-#define BMP280_ID                   0xB280u     // BMP280 sensor ID
+#define BME280_ID                   0xE280u     // BME280 sensor ID, note: low nibble must be zero!
+#define BMP280_ID                   0xB280u     // BMP280 sensor ID, note: low nibble must be zero!
 
 #define BME280_IIC_SCL_TIMEOUT_US   (10000u)    // IIC SCL timeout in us
 #define BME280_IIC_TIMEOUT_MS       (50u)       // IIC transaction timeout in ms
@@ -150,11 +149,10 @@ static esp_err_t m_bme280_get_mem(T_sensor_instance ** oppt_Sensor)
    {
       // clear sensor instance data
       sensor_set_data_invalid(&pt_Sensor->t_SensorData);
-      pt_Sensor->pt_Next = NULL;
       pt_Sensor->u64_CallTimeUs = 0u;
       pt_Sensor->u32_Parameter = 0u;
       pt_Sensor->u16_SensorState = 0u;
-      pt_Sensor->s_SensorName = NULL;
+      pt_Sensor->pt_SensorNvmData = NULL;
    }
    else
    {

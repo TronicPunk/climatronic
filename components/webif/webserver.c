@@ -246,7 +246,7 @@ static esp_err_t m_get_handler_output(httpd_req_t *req)
 
 static esp_err_t m_get_handler_output_setup(httpd_req_t *req)
 {
-   char resp[512];
+   char resp[768];
    int32_t idx = 0;
    int32_t ret;
 
@@ -257,18 +257,20 @@ static esp_err_t m_get_handler_output_setup(httpd_req_t *req)
       for (uint32_t u32_Channel = 0; u32_Channel < OUTPUT_NUM_CHANNEL_MAX; u32_Channel++)
       {
          T_out_channel_data t_Setup;
-         char ac_Name[OUTPUT_NAME_MAX + 1u];
+         char ac_Name[OUTPUT_NAME_LEN_MAX + 1u];
 
          if (output_get_setup(u32_Channel, &t_Setup) == ESP_OK)
          {
             m_escape_json_string(t_Setup.ac_OutName, ac_Name, sizeof(ac_Name));
             ret = snprintf(&resp[idx], sizeof(resp)-idx,
-                           "%s{\"channel\":%lu,\"name\":\"%s\",\"type\":%u,\"value\":%u}",
+                           "%s{\"channel\":%lu,\"name\":\"%s\",\"type\":%u,\"value\":%u,\"rd\":%u,\"wr\":%u}",
                            (u32_Channel > 0u) ? "," : "",
                            (unsigned long)u32_Channel,
                            ac_Name,
-                           (unsigned int)t_Setup.u8_OutType,
-                           (unsigned int)t_Setup.u16_OutValueDef);
+                           (unsigned int)(t_Setup.u8_OutType & OUTPUT_TYPE_MASK),
+                           (unsigned int)t_Setup.u16_OutValueDef,
+                           (unsigned int)((t_Setup.u8_OutType & OUTPUT_FLAG_REMOTE_RD) != 0u),
+                           (unsigned int)((t_Setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u));
             if ((ret > 0) && (ret < (sizeof(resp)-idx)))
             {
                idx += ret;
@@ -326,19 +328,25 @@ static esp_err_t m_set_handler_output_setup(httpd_req_t *req)
    int channel = -1;
    int type = OUTPUT_TYPE_INVALID;
    int value = 0;
-   char name[OUTPUT_NAME_MAX + 1u];
-   ret = sscanf(buf, "{\"channel\":%d,\"name\":\"%24[^\"]\",\"type\":%d,\"value\":%d}",
-                &channel, name, &type, &value);
-   if ((ret == 4) && (channel >= 0) && (channel < OUTPUT_NUM_CHANNEL_MAX) &&
+   int rd = 0;
+   int wr = 0;
+   char name[OUTPUT_NAME_LEN_MAX + 1u];
+
+   ret = sscanf(buf, "{\"channel\":%d,\"name\":\"%24[^\"]\",\"type\":%d,\"value\":%d,\"rd\":%d,\"wr\":%d}",
+                &channel, name, &type, &value, &rd, &wr);
+   if ((ret == 6) && (channel >= 0) && (channel < OUTPUT_NUM_CHANNEL_MAX) &&
        (type >= OUTPUT_TYPE_DIGITAL) && (type <= OUTPUT_TYPE_PWM_AC) &&
-       (value >= OUTPUT_PWM_MIN) && (value <= OUTPUT_PWM_MAX))
+       (value >= OUTPUT_PWM_MIN) && (value <= OUTPUT_PWM_MAX) &&
+       (rd >= 0) && (rd <= 1) && (wr >= 0) && (wr <= 1))
    {
       T_out_channel_data t_Setup;
+      const uint8_t u8_FlagRd = (rd != 0) ? OUTPUT_FLAG_REMOTE_RD : 0u;
+      const uint8_t u8_FlagWr = (wr != 0) ? OUTPUT_FLAG_REMOTE_WR : 0u;
       esp_err_t err;
 
-      strncpy(t_Setup.ac_OutName, name, OUTPUT_NAME_MAX);
-      t_Setup.ac_OutName[OUTPUT_NAME_MAX] = '\0';
-      t_Setup.u8_OutType = (uint8_t)type;
+      strncpy(t_Setup.ac_OutName, name, OUTPUT_NAME_LEN_MAX);
+      t_Setup.ac_OutName[OUTPUT_NAME_LEN_MAX] = '\0';
+      t_Setup.u8_OutType = (uint8_t)type | u8_FlagRd | u8_FlagWr;
       t_Setup.u16_OutValueDef = (uint16_t)value;
 
       err = output_set_setup((uint32_t)channel, &t_Setup);

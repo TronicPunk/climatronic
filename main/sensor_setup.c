@@ -10,7 +10,7 @@
 #include <string.h>
 #include "sensor_setup.h"
 #include "sensor.h"
-#include "sensor_name.h"
+#include "sensor_data.h"
 #include "timer.h"
 
 
@@ -214,8 +214,8 @@ int32_t sensor_setup(void)
             t_Err = get_string((uint8_t *)ac_SensorName, SENSOR_NAME_LEN_MAX);
             if (t_Err == ESP_OK)
             {
-               (void)sensor_name_set_idx(u16_SensorIdx, ac_SensorName);
-               (void)sensor_name_store();
+               (void)sensor_data_set_name(u16_SensorIdx, ac_SensorName);
+               (void)sensor_data_store();
             }
          }
 

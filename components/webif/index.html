@@ -61,7 +61,17 @@
          box-sizing: border-box;
       }
       .save-btn {
-         min-width: 80px;
+         min-width: 120px;
+         height: 36px;
+         padding: 8px 16px;
+         font-size: 14px;
+         font-weight: 600;
+      }
+      .setup-actions {
+         margin-top: 16px;
+         margin-bottom: 20px;
+         display: flex;
+         justify-content: flex-start;
       }
    </style>
 </head>
@@ -111,12 +121,16 @@
             <th>Ausgang</th>
             <th>Name</th>
             <th>Typ</th>
+            <th>Read</th>
+            <th>Write</th>
             <th>Standardwert</th>
-            <th>Speichern</th>
          </tr>
       </thead>
       <tbody></tbody>
    </table>
+   <div class="setup-actions">
+     <button id="saveAllOutputConfigBtn" type="button" class="save-btn">Konfiguration speichern</button>
+   </div>
 </section>
 
 <script>
@@ -129,7 +143,11 @@ function setTab(tabId) {
    tab.classList.toggle('active', tab.dataset.tab === tabId);
  });
  document.querySelectorAll('.tab-panel').forEach(panel => {
-   panel.classList.toggle('active', panel.id === 'tab-' + tabId);
+   const isActive = panel.id === 'tab-' + tabId;
+   panel.classList.toggle('active', isActive);
+   if (isActive && tabId === 'setup') {
+     fetchOutputConfigData();
+   }
  });
 }
 
@@ -201,6 +219,18 @@ function createOutputConfigRows() {
     });
     typeCell.appendChild(typeSelect);
 
+    const readCell = document.createElement("td");
+    const readCheckbox = document.createElement("input");
+    readCheckbox.type = "checkbox";
+    readCheckbox.id = "configRead" + i;
+    readCell.appendChild(readCheckbox);
+
+    const writeCell = document.createElement("td");
+    const writeCheckbox = document.createElement("input");
+    writeCheckbox.type = "checkbox";
+    writeCheckbox.id = "configWrite" + i;
+    writeCell.appendChild(writeCheckbox);
+
     const valueCell = document.createElement("td");
     const valueInput = document.createElement("input");
     valueInput.type = "number";
@@ -211,23 +241,16 @@ function createOutputConfigRows() {
     valueInput.id = "configValue" + i;
     valueCell.appendChild(valueInput);
 
-    const actionCell = document.createElement("td");
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.textContent = "Save";
-    saveButton.className = "save-btn";
-    saveButton.onclick = () => saveOutputConfig(i, nameInput.value, typeSelect.value, valueInput.value);
-    actionCell.appendChild(saveButton);
-
     row.appendChild(channelCell);
     row.appendChild(nameCell);
     row.appendChild(typeCell);
+    row.appendChild(readCell);
+    row.appendChild(writeCell);
     row.appendChild(valueCell);
-    row.appendChild(actionCell);
     tbody.appendChild(row);
   }
 }
- 
+
 async function fetchSensorData() {
   try {
     const response = await fetch('/api/sensors');
@@ -294,30 +317,31 @@ function updateOutputConfig(data) {
     if (!row) continue;
     const nameInput = row.querySelector('input[type="text"]');
     const typeSelect = row.querySelector('select');
+    const readCheckbox = row.children[3].querySelector('input[type="checkbox"]');
+    const writeCheckbox = row.children[4].querySelector('input[type="checkbox"]');
     const valueInput = row.querySelector('input[type="number"]');
-    const channel = configChannels.find(item => item.channel === i) || { name: 'OUT' + (i + 1), type: 1, value: 0 };
+    const channel = configChannels.find(item => item.channel === i) || { name: 'OUT' + (i + 1), type: 1, value: 0, rd: false, wr: false };
     nameInput.value = channel.name || ('OUT' + (i + 1));
     typeSelect.value = String(channel.type || 1);
+    readCheckbox.checked = !!channel.rd;
+    writeCheckbox.checked = !!channel.wr;
     valueInput.value = String(channel.value || 0);
   }
 }
 
-async function saveOutputConfig(channel, name, type, value) {
+async function saveOutputConfig(channel, name, type, value, readFlag, writeFlag) {
   const trimmedName = (name || '').trim();
   const parsedType = Number(type);
   const parsedValue = Number(value);
 
   if (trimmedName.length === 0 || trimmedName.length > 24) {
-    alert('Der Name muss 1 bis 24 Zeichen lang sein.');
-    return;
+    throw new Error('Der Name muss 1 bis 24 Zeichen lang sein.');
   }
   if (!Number.isInteger(parsedType) || parsedType < 1 || parsedType > 3) {
-    alert('Bitte einen gültigen Ausgangstyp wählen.');
-    return;
+    throw new Error('Bitte einen gültigen Ausgangstyp wählen.');
   }
   if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 1000) {
-    alert('Der Standardwert muss ein Integerwert zwischen 0 und 1000 sein.');
-    return;
+    throw new Error('Der Standardwert muss ein Integerwert zwischen 0 und 1000 sein.');
   }
 
   const response = await fetch('/set_output_setup', {
@@ -327,19 +351,45 @@ async function saveOutputConfig(channel, name, type, value) {
       channel: Number(channel),
       name: trimmedName,
       type: parsedType,
-      value: parsedValue
+      value: parsedValue,
+      rd: readFlag ? 1 : 0,
+      wr: writeFlag ? 1 : 0
     })
   });
 
   if (!response.ok) {
-    alert('Speichern fehlgeschlagen.');
-    return;
+    throw new Error('Speichern fehlgeschlagen.');
   }
-
-  fetchOutputConfigData();
-  fetchOutputData();
 }
- 
+
+async function saveAllOutputConfigs() {
+  const rows = document.querySelectorAll('#outputConfigTable tbody tr');
+  const saveButton = document.getElementById('saveAllOutputConfigBtn');
+  const oldLabel = saveButton.textContent;
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const nameInput = row.querySelector('input[type="text"]');
+      const typeSelect = row.querySelector('select');
+      const readCheckbox = row.children[3].querySelector('input[type="checkbox"]');
+      const writeCheckbox = row.children[4].querySelector('input[type="checkbox"]');
+      const valueInput = row.querySelector('input[type="number"]');
+
+      await saveOutputConfig(i, nameInput.value, typeSelect.value, valueInput.value, readCheckbox.checked, writeCheckbox.checked);
+    }
+    fetchOutputConfigData();
+    fetchOutputData();
+  } catch (error) {
+    alert(error.message || 'Speichern fehlgeschlagen.');
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = oldLabel;
+  }
+}
+
 function setOutput(outchn, val) {
   document.getElementById("value" + outchn).textContent = val + " %";
   const slider = document.getElementById("slider" + outchn);
@@ -373,6 +423,7 @@ function fetchData() {
 
 createSliders(OutputChannels);
 createOutputConfigRows();
+document.getElementById('saveAllOutputConfigBtn').addEventListener('click', saveAllOutputConfigs);
 setInterval(fetchData, 2000);
 fetchData();
 fetchOutputConfigData();

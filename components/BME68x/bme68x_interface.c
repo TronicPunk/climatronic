@@ -8,13 +8,12 @@
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include <string.h>
 #include "bme68x_interface.h"
-#include "sensor_name.h"
 #include "iic.h"
 #include "iic_mux.h"
 #include "timer.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define BME680_ID                   0xE680u     // BME680 sensor ID
+#define BME680_ID                   0xE680u     // BME680 sensor ID, note: low nibble must be zero!
 
 #define BME68X_IIC_SCL_TIMEOUT_US   (10000u)    // IIC SCL timeout in us
 #define BME68X_IIC_TIMEOUT_MS       (50u)       // IIC transaction timeout in ms
@@ -131,11 +130,10 @@ static esp_err_t m_bme68x_get_mem(T_sensor_instance ** oppt_Sensor)
    {
       // clear sensor instance data
       sensor_set_data_invalid(&pt_Sensor->t_SensorData);
-      pt_Sensor->pt_Next = NULL;
       pt_Sensor->u64_CallTimeUs = 0u;
       pt_Sensor->u32_Parameter = 0u;
       pt_Sensor->u16_SensorState = 0u;
-      pt_Sensor->s_SensorName = NULL;
+      pt_Sensor->pt_SensorNvmData = NULL;
    }
    else
    {

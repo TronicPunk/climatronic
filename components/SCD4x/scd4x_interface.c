@@ -10,7 +10,6 @@
 #include "scd4x_interface.h"
 #include "sensirion_i2c.h"
 #include "sensirion_common.h"
-#include "sensor_name.h"
 #include "iic.h"
 #include "iic_mux.h"
 #include "timer.h"
@@ -18,8 +17,8 @@
 #include "debug.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define SCD40_ID                    0xCD40u     // SCD40 sensor ID
-#define SCD41_ID                    0xCD41u     // SCD41 sensor ID
+#define SCD40_ID                    0xD400u     // SCD40 sensor ID, note: low nibble must be zero!
+#define SCD41_ID                    0xD410u     // SCD41 sensor ID, note: low nibble must be zero!
 
 #define SCD4X_IIC_SCL_TIMEOUT_US    10000u      // IIC SCL timeout in us
 #define SCD4X_IIC_TIMEOUT_MS        50u         // IIC transaction timeout in ms
@@ -166,11 +165,10 @@ static esp_err_t m_scd4x_get_mem(T_sensor_instance ** oppt_Sensor)
    {
       // clear sensor instance data
       sensor_set_data_invalid(&pt_Sensor->t_SensorData);
-      pt_Sensor->pt_Next = NULL;
       pt_Sensor->u64_CallTimeUs = 0u;
       pt_Sensor->u32_Parameter = 0u;
       pt_Sensor->u16_SensorState = 0u;
-      pt_Sensor->s_SensorName = NULL;
+      pt_Sensor->pt_SensorNvmData = NULL;
    }
    else
    {

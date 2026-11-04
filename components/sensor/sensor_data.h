@@ -1,7 +1,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 /*!
    \file  sensor_data.h
-   \brief provide data for all available sensors
+   \brief provide nvm data for all available sensors
 */
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -15,29 +15,17 @@
 #include "scd4x_interface.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define ICC_BUS_COUNT      6u    // number of available IIC busses
-#define SENSOR_TYPE_COUNT  3u    // number of different supported IIC sensors
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
-typedef struct
-{
-   uint8_t u8_IicBus;               // IIC bus number that should be probed
-   uint32_t u32_IicFreqHz;          // IIC bus clock frequency in Hz
-} T_sensor_bus_init;
-
-
 /* -- Global Variables ---------------------------------------------------------------------------------------------- */
-
-extern const T_sensor_bus_init gat_SensorbusInit[ICC_BUS_COUNT +1u];
-extern const T_sensor_descriptor * gapt_SensorTypes[SENSOR_TYPE_COUNT +1u];
-
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
-void sensor_data_register_sensor(T_sensor_instance * const opt_NewSensor);
-uint16_t sensor_data_get_count(void);
-T_sensor_instance* sensor_data_get_handle_idx(const uint16_t ou16_SensorIdx);
-T_sensor_instance* sensor_data_get_handle_bus_id(const uint8_t ou8_IicBus, const uint16_t ou16_SensorId);
+esp_err_t sensor_data_load(void);
+esp_err_t sensor_data_store(void);
+T_sensor_nvm_data * sensor_data_get(const uint16_t ou16_SensorIdx);
+esp_err_t sensor_data_set_name(const uint16_t ou16_SensorIdx, const char * const oac_SensorName);
+esp_err_t sensor_data_set_flags(const uint16_t ou16_SensorIdx, const uint8_t ou8_SensorFlags);
 
 #endif /* SENSOR_DATA_H */

@@ -138,13 +138,16 @@ static void m_output_test_print_channel(const uint32_t ou32_Channel, const uint8
    static const char* as_EditFlag[2] = { "   " , " * " };
    static const char* as_OutType[4] = { "INVALID" , "DIGITAL", "PWM 2K ", "PWM-AC " };
    T_out_channel_data t_OutSetup;
-   uint8_t u8_FlagIdx = (ou8_EditFlag >= 1u) ? 1u : 0u;
-
+   const uint8_t u8_FlagIdx = (ou8_EditFlag >= 1u) ? 1u : 0u;
    output_get_setup(ou32_Channel, &t_OutSetup);
+   const uint8_t u8_OutType = t_OutSetup.u8_OutType & OUTPUT_TYPE_MASK;
+   const uint8_t u8_Rd = ((t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_RD) != 0u);
+   const uint8_t u8_Wr = ((t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u);
+
    output_get_pwm(ou32_Channel, &s32_Pwm);
    set_cursor(0u, ou32_Channel + 5u);
-   printf("%sOUTPUT%lu = %4ld %% [type = %s, def = %4u, name = %s]\r\n", as_EditFlag[u8_FlagIdx], ou32_Channel+1u, (s32_Pwm + 5)/10,
-          as_OutType[t_OutSetup.u8_OutType], t_OutSetup.u16_OutValueDef, t_OutSetup.ac_OutName);
+   printf("%sOUTPUT%lu = %4ld %% [type = %s, def = %4u, name = %s, rd = %1u, wr = %1u]\r\n", as_EditFlag[u8_FlagIdx], ou32_Channel+1u,
+          (s32_Pwm + 5)/10, as_OutType[u8_OutType], t_OutSetup.u16_OutValueDef, t_OutSetup.ac_OutName, u8_Rd, u8_Wr);
 }
 
 static void m_output_test_disable_all(const uint32_t ou32_EditChannel)
@@ -217,11 +220,12 @@ static int32_t m_output_setup(void)
       }
       if (u8_Key == '3')
       {
-         t_OutSetupEdit.u8_OutType++;
-         if (t_OutSetupEdit.u8_OutType >= OUTPUT_TYPE_MAX)
+         uint8_t u8_OutType = (t_OutSetupEdit.u8_OutType & OUTPUT_TYPE_MASK) +1u;
+         if (u8_OutType >= OUTPUT_TYPE_MAX)
          {
-            t_OutSetupEdit.u8_OutType = OUTPUT_TYPE_DIGITAL;
+            u8_OutType = OUTPUT_TYPE_DIGITAL;
          }
+         t_OutSetupEdit.u8_OutType = (t_OutSetupEdit.u8_OutType & OUTPUT_FLAG_MASK) | u8_OutType;
          q_SetupModified = true;
       }
       if (u8_Key == '-')
@@ -253,13 +257,13 @@ static int32_t m_output_setup(void)
       if (u8_Key == '6')
       {
          esp_err_t t_Err;
-         char ac_OutName[OUTPUT_NAME_MAX+1];
-         memset(ac_OutName, ' ', OUTPUT_NAME_MAX);
-         ac_OutName[OUTPUT_NAME_MAX] = 0;
+         char ac_OutName[OUTPUT_NAME_LEN_MAX+1];
+         memset(ac_OutName, ' ', OUTPUT_NAME_LEN_MAX);
+         ac_OutName[OUTPUT_NAME_LEN_MAX] = 0;
          set_cursor(50u, 14u);
          printf("%s",ac_OutName);
          set_cursor(50u, 14u);
-         t_Err = get_string((uint8_t *)ac_OutName, OUTPUT_NAME_MAX);
+         t_Err = get_string((uint8_t *)ac_OutName, OUTPUT_NAME_LEN_MAX);
          if (t_Err == ESP_OK)
          {
             strcpy(t_OutSetupEdit.ac_OutName, ac_OutName);
@@ -286,14 +290,14 @@ static int32_t m_output_setup(void)
 static void m_output_setup_print_channel(const uint32_t ou32_Channel, const T_out_channel_data * const opt_OutSetup)
 {
    static const char* as_OutType[4] = { "INVALID" , "DIGITAL", "PWM 2K ", "PWM-AC " };
-   char ac_OutName[OUTPUT_NAME_MAX+1];
+   char ac_OutName[OUTPUT_NAME_LEN_MAX+1];
    const uint32_t u32_NameLen = strlen(opt_OutSetup->ac_OutName);
-   const uint32_t u32_RemainingSpace = OUTPUT_NAME_MAX - u32_NameLen;
+   const uint32_t u32_RemainingSpace = OUTPUT_NAME_LEN_MAX - u32_NameLen;
    strcpy(ac_OutName, opt_OutSetup->ac_OutName);
    if (u32_RemainingSpace > 0u)
    {
       memset(&ac_OutName[u32_NameLen], ' ', u32_RemainingSpace);
-      ac_OutName[OUTPUT_NAME_MAX] = 0;
+      ac_OutName[OUTPUT_NAME_LEN_MAX] = 0;
    }
 
    set_cursor(0u, 14u);

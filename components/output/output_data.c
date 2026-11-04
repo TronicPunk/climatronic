@@ -33,7 +33,7 @@ static const T_out_channel_data mt_OutChannelInvalid =
 static const T_out_channel_data mt_OutChannelSetupDef =
 {
    .u16_OutValueDef = 0u,
-   .u8_OutType = OUTPUT_TYPE_DIGITAL,
+   .u8_OutType = OUTPUT_TYPE_DIGITAL|OUTPUT_FLAG_REMOTE_RD|OUTPUT_FLAG_REMOTE_WR,
    .ac_OutName = "OUTx"
 };
 
@@ -115,8 +115,9 @@ esp_err_t output_data_store(const uint32_t ou32_Channel, const T_out_channel_dat
       const uint32_t u32_NameLen = strnlen(opt_OutChannelSetup->ac_OutName, sizeof(opt_OutChannelSetup->ac_OutName));
 
       // check output channel setup data
-      if ((opt_OutChannelSetup->u8_OutType < OUTPUT_TYPE_MAX) && (opt_OutChannelSetup->u16_OutValueDef <= OUTPUT_PWM_MAX) &&
-          (u32_NameLen > 0u) && (u32_NameLen <= OUTPUT_NAME_MAX))
+      if (((opt_OutChannelSetup->u8_OutType & OUTPUT_TYPE_MASK) < OUTPUT_TYPE_MAX) &&
+          (opt_OutChannelSetup->u16_OutValueDef <= OUTPUT_PWM_MAX) &&
+          (u32_NameLen > 0u) && (u32_NameLen <= OUTPUT_NAME_LEN_MAX))
       {
          T_out_channel_data_crc t_OutChannelSetupCrc;
          T_out_channel_data * const pt_OutChannelSetup = &t_OutChannelSetupCrc.t_OutChannelSetup;
@@ -124,7 +125,7 @@ esp_err_t output_data_store(const uint32_t ou32_Channel, const T_out_channel_dat
 
          *pt_OutChannelSetup = *opt_OutChannelSetup;
          // fill unused name array data with \0
-         (void)memset(&pt_OutChannelSetup->ac_OutName[u32_NameLen+1u], 0, OUTPUT_NAME_MAX-u32_NameLen);
+         (void)memset(&pt_OutChannelSetup->ac_OutName[u32_NameLen+1u], 0, OUTPUT_NAME_LEN_MAX-u32_NameLen);
          // store setup data
          t_Err = nvm_data_store(u32_NvmAddr, sizeof(T_out_channel_data_crc), &t_OutChannelSetupCrc);
       }
