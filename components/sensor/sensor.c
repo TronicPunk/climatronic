@@ -178,11 +178,37 @@ esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const o
    if (pt_Sensor != NULL)
    {
       opt_SensorInfo->pt_Sensor = pt_Sensor->pt_SensorDescriptor->pt_Sensor;
-      opt_SensorInfo->s_Name = pt_Sensor->pt_SensorNvmData->ac_SensorName;
+      if (pt_Sensor->pt_SensorNvmData != NULL)
+      {
+         opt_SensorInfo->s_Name = pt_Sensor->pt_SensorNvmData->ac_SensorName;
+         opt_SensorInfo->u8_Flags = pt_Sensor->pt_SensorNvmData->u8_SensorFlags;
+      }
+      else
+      {
+         // called sensor_get_info() but m_sensor_detect() not finished
+         opt_SensorInfo->s_Name = "none";
+         opt_SensorInfo->u8_Flags = 0u;
+      }
       opt_SensorInfo->u32_IicFreq = pt_Sensor->u32_IicFreq;
       opt_SensorInfo->u8_IicBus = pt_Sensor->u8_IicBus;
       opt_SensorInfo->u8_IicAddr = pt_Sensor->u8_IicAddr;
       t_Err = ESP_OK;
+   }
+
+   return t_Err;
+}
+
+esp_err_t sensor_set_setup(const uint16_t ou16_SensorIdx, const char * const oac_SensorName, const uint8_t ou8_SensorFlags)
+{
+   esp_err_t t_Err = sensor_data_set_name(ou16_SensorIdx, oac_SensorName);
+
+   if (t_Err == ESP_OK)
+   {
+      t_Err = sensor_data_set_flags(ou16_SensorIdx, ou8_SensorFlags);
+   }
+   if (t_Err == ESP_OK)
+   {
+      t_Err = sensor_data_store();
    }
 
    return t_Err;

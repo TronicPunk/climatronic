@@ -7,8 +7,13 @@
 /* --- Includes ------------------------------------------------------------ */
 #include "webserver.h"
 #include "esp_http_server.h"
-#include "sensor.h"
+#include "esp_system.h"
+#include "sensor_api.h"
 #include "output.h"
+#include "system_data.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -37,9 +42,14 @@ static esp_err_t m_get_handler_root(httpd_req_t *req);
 static esp_err_t m_get_handler_favicon(httpd_req_t *req);
 static esp_err_t m_get_handler_sensor_data(httpd_req_t *req);
 static esp_err_t m_get_handler_output(httpd_req_t *req);
+static esp_err_t m_get_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_output_setup(httpd_req_t *req);
+static esp_err_t m_get_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output(httpd_req_t *req);
+static esp_err_t m_set_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
+static esp_err_t m_set_handler_system_setup(httpd_req_t *req);
+static esp_err_t m_post_handler_restart(httpd_req_t *req);
 static esp_err_t m_set_handler_mode(httpd_req_t *req);
 
 /* --- Implementation ------------------------------------------------------ */
@@ -156,7 +166,7 @@ static esp_err_t m_get_handler_sensor_data(httpd_req_t *req)
 {
    // response example (size = 32 + n x (82+name[32]+type[14] = 128)):
    // {"sensor_cnt":"6", "sensor":[{"name":"Sensor Name1","type":"BME280","bus":0,"temp":5.1,"pres":6.1,"humi":5.1,"co2":5.0},]}
-   char resp[32+128*8];
+   char resp[32+128*16];
    const int32_t resp_size = sizeof(resp);
    const uint32_t u32_Count = sensor_get_count();
 
@@ -196,6 +206,111 @@ static esp_err_t m_get_handler_sensor_data(httpd_req_t *req)
       }
       sprintf(&resp[idx-1], " ]}");
    }
+   httpd_resp_set_type(req, "application/json");
+   httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+   return ESP_OK;
+}
+
+static esp_err_t m_get_handler_sensor_setup(httpd_req_t *req)
+{
+   char resp[32u + 160u * 16u];
+   int32_t idx = 0;
+   int32_t ret;
+   uint16_t u16_AddedSensors = 0u;
+   const uint16_t u16_SensorCount = sensor_get_count();
+
+   ret = snprintf(resp, sizeof(resp), "{\"sensors\":[");
+   if (ret <= 0)
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+   idx = ret;
+
+   for (uint16_t u16_SensorIdx = 0u; u16_SensorIdx < u16_SensorCount; u16_SensorIdx++)
+   {
+      T_sensor_info t_Info;
+      char ac_Name[SENSOR_NAME_LEN_MAX * 2u + 1u];
+
+      if (sensor_get_info(u16_SensorIdx, &t_Info) != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+
+      m_escape_json_string(t_Info.s_Name, ac_Name, sizeof(ac_Name));
+      ret = snprintf(&resp[idx], sizeof(resp) - idx,
+                     "%s{\"index\":%u,\"bus\":%u,\"type\":\"%s\",\"name\":\"%s\",\"rd\":%u}",
+                     (u16_AddedSensors > 0u) ? "," : "",
+                     (unsigned int)u16_SensorIdx,
+                     (unsigned int)t_Info.u8_IicBus,
+                     t_Info.pt_Sensor->s_Type,
+                     ac_Name,
+                     (unsigned int)((t_Info.u8_Flags & SENSOR_FLAGS_REMOTE_RD) != 0u));
+      if ((ret <= 0) || ((size_t)ret >= (sizeof(resp) - (size_t)idx)))
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+
+      idx += ret;
+      u16_AddedSensors++;
+   }
+
+   ret = snprintf(&resp[idx], sizeof(resp) - (size_t)idx, "]}");
+   if ((ret <= 0) || ((size_t)ret >= (sizeof(resp) - (size_t)idx)))
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+
+   httpd_resp_set_type(req, "application/json");
+   httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+   return ESP_OK;
+}
+
+static esp_err_t m_get_handler_system_setup(httpd_req_t *req)
+{
+   char resp[32u + 32u * I2C_BUS_COUNT];
+   size_t idx = 0u;
+   int ret = snprintf(resp, sizeof(resp), "{\"buses\":[");
+
+   if (ret <= 0 || (size_t)ret >= sizeof(resp))
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+   idx = (size_t)ret;
+
+   for (uint32_t u32_Bus = 0u; u32_Bus < I2C_BUS_COUNT; u32_Bus++)
+   {
+      uint8_t u8_Frequency;
+      if (system_data_get_i2c_freq(u32_Bus, &u8_Frequency) != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+
+      ret = snprintf(&resp[idx], sizeof(resp) - idx,
+                     "%s{\"bus\":%lu,\"frequency\":%u}",
+                     (u32_Bus > 0u) ? "," : "",
+                     (unsigned long)u32_Bus,
+                     (unsigned int)u8_Frequency);
+      if (ret <= 0 || (size_t)ret >= sizeof(resp) - idx)
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+      idx += (size_t)ret;
+   }
+
+   ret = snprintf(&resp[idx], sizeof(resp) - idx, "]}");
+   if (ret <= 0 || (size_t)ret >= sizeof(resp) - idx)
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+
    httpd_resp_set_type(req, "application/json");
    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
    return ESP_OK;
@@ -366,6 +481,110 @@ static esp_err_t m_set_handler_output_setup(httpd_req_t *req)
    return ESP_OK;
 }
 
+static esp_err_t m_set_handler_sensor_setup(httpd_req_t *req)
+{
+   char buf[128];
+   int ret = httpd_req_recv(req, buf, sizeof(buf) - 1u);
+   if (ret <= 0)
+   {
+      return ESP_FAIL;
+   }
+   buf[ret] = '\0';
+
+   int sensor = -1;
+   int rd = -1;
+   char name[SENSOR_NAME_LEN_MAX + 1u];
+   ret = sscanf(buf, "{\"sensor\":%d,\"name\":\"%24[^\"]\",\"rd\":%d}", &sensor, name, &rd);
+   if ((ret != 3) || (sensor < 0) || (sensor >= sensor_get_count()) || ((rd != 0) && (rd != 1)))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   const uint8_t u8_Flags = (rd != 0) ? SENSOR_FLAGS_REMOTE_RD : 0u;
+   const esp_err_t err = sensor_set_setup((uint16_t)sensor, name, u8_Flags);
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   httpd_resp_sendstr(req, "OK");
+   return ESP_OK;
+}
+
+static esp_err_t m_set_handler_system_setup(httpd_req_t *req)
+{
+   char buf[96];
+   int ret = httpd_req_recv(req, buf, sizeof(buf) - 1u);
+   if (ret <= 0)
+   {
+      return ESP_FAIL;
+   }
+   buf[ret] = '\0';
+
+   int ai_Frequency[I2C_BUS_COUNT];
+   char *pc_Frequency = strstr(buf, "\"frequencies\":[");
+   if (pc_Frequency == NULL)
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+      return ESP_ERR_INVALID_ARG;
+   }
+   pc_Frequency += strlen("\"frequencies\":[");
+
+   for (uint32_t u32_Bus = 0u; u32_Bus < I2C_BUS_COUNT; u32_Bus++)
+   {
+      char *pc_End;
+      long s32_Frequency = strtol(pc_Frequency, &pc_End, 10);
+      if ((pc_End == pc_Frequency) ||
+          ((s32_Frequency != I2C_BUS_FREQ_100K) && (s32_Frequency != I2C_BUS_FREQ_400K)))
+      {
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+         return ESP_ERR_INVALID_ARG;
+      }
+      ai_Frequency[u32_Bus] = (int)s32_Frequency;
+      pc_Frequency = pc_End;
+      if ((u32_Bus + 1u < I2C_BUS_COUNT) && (*pc_Frequency++ != ','))
+      {
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+         return ESP_ERR_INVALID_ARG;
+      }
+   }
+   if (strncmp(pc_Frequency, "]}", 2u) != 0)
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   for (uint32_t u32_Bus = 0u; u32_Bus < I2C_BUS_COUNT; u32_Bus++)
+   {
+      const esp_err_t err = system_data_set_i2c_freq(u32_Bus, (uint8_t)ai_Frequency[u32_Bus]);
+      if (err != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return err;
+      }
+   }
+
+   const esp_err_t err = system_data_store();
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   httpd_resp_sendstr(req, "OK");
+   return ESP_OK;
+}
+
+static esp_err_t m_post_handler_restart(httpd_req_t *req)
+{
+   httpd_resp_sendstr(req, "Restarting");
+   vTaskDelay(pdMS_TO_TICKS(250));
+   esp_restart();
+   return ESP_OK;
+}
+
 /**
  * @brief set handler to set output mode
  *
@@ -398,6 +617,8 @@ static esp_err_t m_set_handler_mode(httpd_req_t *req)
 void start_webserver(void)
 {
    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+   config.max_uri_handlers = 14;
+   config.stack_size = 8192;
 
    httpd_start(&server, &config);
 
@@ -405,18 +626,28 @@ void start_webserver(void)
    httpd_uri_t favicon = {.uri="/favicon.ico", .method=HTTP_GET, .handler=m_get_handler_favicon};
    httpd_uri_t get_sensor_data = {.uri="/api/sensors", .method=HTTP_GET, .handler=m_get_handler_sensor_data};
    httpd_uri_t get_output_data = {.uri="/api/output", .method=HTTP_GET, .handler=m_get_handler_output};
+   httpd_uri_t get_sensor_setup_data = {.uri="/api/sensor_setup", .method=HTTP_GET, .handler=m_get_handler_sensor_setup};
    httpd_uri_t get_output_setup_data = {.uri="/api/output_setup", .method=HTTP_GET, .handler=m_get_handler_output_setup};
+   httpd_uri_t get_system_setup_data = {.uri="/api/system_setup", .method=HTTP_GET, .handler=m_get_handler_system_setup};
    httpd_uri_t set_output_uri = {.uri="/set_output", .method=HTTP_POST, .handler=m_set_handler_output, .user_ctx=NULL};
+   httpd_uri_t set_sensor_setup_uri = {.uri="/set_sensor_setup", .method=HTTP_POST, .handler=m_set_handler_sensor_setup, .user_ctx=NULL};
    httpd_uri_t set_output_setup_uri = {.uri="/set_output_setup", .method=HTTP_POST, .handler=m_set_handler_output_setup, .user_ctx=NULL};
+   httpd_uri_t set_system_setup_uri = {.uri="/set_system_setup", .method=HTTP_POST, .handler=m_set_handler_system_setup, .user_ctx=NULL};
+   httpd_uri_t restart_uri = {.uri="/restart", .method=HTTP_POST, .handler=m_post_handler_restart, .user_ctx=NULL};
    httpd_uri_t set_mode_uri = {.uri="/set_mode", .method=HTTP_POST, .handler=m_set_handler_mode, .user_ctx=NULL};
 
    httpd_register_uri_handler(server, &root);
    httpd_register_uri_handler(server, &favicon);
    httpd_register_uri_handler(server, &get_sensor_data);
+   httpd_register_uri_handler(server, &get_sensor_setup_data);
    httpd_register_uri_handler(server, &get_output_data);
    httpd_register_uri_handler(server, &get_output_setup_data);
+   httpd_register_uri_handler(server, &get_system_setup_data);
    httpd_register_uri_handler(server, &set_output_uri);
+   httpd_register_uri_handler(server, &set_sensor_setup_uri);
    httpd_register_uri_handler(server, &set_output_setup_uri);
+   httpd_register_uri_handler(server, &set_system_setup_uri);
+   httpd_register_uri_handler(server, &restart_uri);
    httpd_register_uri_handler(server, &set_mode_uri);
 }
 

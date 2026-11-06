@@ -12,6 +12,7 @@ idf_component_register(
       mdns
       sensor
       output
+      system_data
 )
 
 # HTML-Datei einbinden (als binary)

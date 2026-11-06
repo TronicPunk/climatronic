@@ -71,6 +71,7 @@
          margin-top: 16px;
          margin-bottom: 20px;
          display: flex;
+         gap: 12px;
          justify-content: flex-start;
       }
    </style>
@@ -79,7 +80,9 @@
 <h1>Clima-Control Monitor</h1>
 <div class="tabs">
   <button class="tab active" data-tab="monitor">Monitor</button>
-  <button class="tab" data-tab="setup">Ausgänge konfigurieren</button>
+  <button class="tab" data-tab="setup-sensor">Sensoren konfigurieren</button>
+  <button class="tab" data-tab="setup-output">Ausgänge konfigurieren</button>
+  <button class="tab" data-tab="setup-system">Systemdaten</button>
 </div>
 
 <section id="tab-monitor" class="tab-panel active">
@@ -87,9 +90,9 @@
    <table id="sensorTable">
        <thead>
           <tr>
-             <th>Sensor ID</th>
              <th>Bus</th>
-             <th>Typ</th>
+             <th>Sensor Typ</th>
+             <th>Name</th>
              <th>Temperatur (°C)</th>
              <th>Luftdruck (hPa)</th>
              <th>Feuchtigkeit (%)</th>
@@ -113,7 +116,25 @@
    <div id="sliders-container"></div>
 </section>
 
-<section id="tab-setup" class="tab-panel">
+<section id="tab-setup-sensor" class="tab-panel">
+   <h2>Sensor-Konfiguration</h2>
+   <table id="sensorConfigTable">
+      <thead>
+         <tr>
+            <th>Bus</th>
+            <th>Sensor Typ</th>
+            <th>Name</th>
+            <th>Read</th>
+         </tr>
+      </thead>
+      <tbody></tbody>
+   </table>
+   <div class="setup-actions">
+     <button id="saveAllSensorConfigBtn" type="button" class="save-btn">Konfiguration speichern</button>
+   </div>
+</section>
+
+<section id="tab-setup-output" class="tab-panel">
    <h2>Ausgangs-Konfiguration</h2>
    <table id="outputConfigTable">
       <thead>
@@ -121,9 +142,9 @@
             <th>Ausgang</th>
             <th>Name</th>
             <th>Typ</th>
+            <th>Fix-Wert</th>
             <th>Read</th>
             <th>Write</th>
-            <th>Standardwert</th>
          </tr>
       </thead>
       <tbody></tbody>
@@ -131,6 +152,24 @@
    <div class="setup-actions">
      <button id="saveAllOutputConfigBtn" type="button" class="save-btn">Konfiguration speichern</button>
    </div>
+</section>
+
+<section id="tab-setup-system" class="tab-panel">
+   <h2>Systemdaten</h2>
+   <table id="systemConfigTable">
+      <thead>
+         <tr>
+            <th>I2C Bus</th>
+            <th>Frequenz</th>
+         </tr>
+      </thead>
+      <tbody></tbody>
+   </table>
+   <div class="setup-actions">
+     <button id="saveSystemConfigBtn" type="button" class="save-btn">Konfiguration speichern</button>
+     <button id="restartSystemBtn" type="button" class="save-btn">Neustart</button>
+   </div>
+   <p id="systemConfigMessage" role="status"></p>
 </section>
 
 <script>
@@ -145,8 +184,12 @@ function setTab(tabId) {
  document.querySelectorAll('.tab-panel').forEach(panel => {
    const isActive = panel.id === 'tab-' + tabId;
    panel.classList.toggle('active', isActive);
-   if (isActive && tabId === 'setup') {
+   if (isActive && tabId === 'setup-output') {
      fetchOutputConfigData();
+   } else if (isActive && tabId === 'setup-sensor') {
+     fetchSensorConfigData();
+   } else if (isActive && tabId === 'setup-system') {
+     fetchSystemConfigData();
    }
  });
 }
@@ -163,7 +206,7 @@ function createSliders(count) {
     row.className = "slider-row";
 
     const label = document.createElement("label");
-    label.textContent = "Ausgang " + (i + 1);
+    label.textContent = "OUT " + (i + 1);
 
     const slider = document.createElement("input");
     slider.type = "range";
@@ -219,6 +262,16 @@ function createOutputConfigRows() {
     });
     typeCell.appendChild(typeSelect);
 
+    const valueCell = document.createElement("td");
+    const valueInput = document.createElement("input");
+    valueInput.type = "number";
+    valueInput.min = "0";
+    valueInput.max = "1000";
+    valueInput.step = "1";
+    valueInput.className = "config-input";
+    valueInput.id = "configValue" + i;
+    valueCell.appendChild(valueInput);
+
     const readCell = document.createElement("td");
     const readCheckbox = document.createElement("input");
     readCheckbox.type = "checkbox";
@@ -231,22 +284,12 @@ function createOutputConfigRows() {
     writeCheckbox.id = "configWrite" + i;
     writeCell.appendChild(writeCheckbox);
 
-    const valueCell = document.createElement("td");
-    const valueInput = document.createElement("input");
-    valueInput.type = "number";
-    valueInput.min = "0";
-    valueInput.max = "1000";
-    valueInput.step = "1";
-    valueInput.className = "config-input";
-    valueInput.id = "configValue" + i;
-    valueCell.appendChild(valueInput);
-
     row.appendChild(channelCell);
     row.appendChild(nameCell);
     row.appendChild(typeCell);
+    row.appendChild(valueCell);
     row.appendChild(readCell);
     row.appendChild(writeCell);
-    row.appendChild(valueCell);
     tbody.appendChild(row);
   }
 }
@@ -266,9 +309,9 @@ function updateSensorData(data) {
    data.sensors.forEach(sensor => {
       const row = document.createElement("tr");
       row.innerHTML = `
-         <td>${sensor.name}</td>
          <td>${sensor.bus}</td>
          <td>${sensor.type}</td>
+         <td>${sensor.name}</td>
          <td>${format(sensor.temp, 1)}</td>
          <td>${format(sensor.pres, 1)}</td>
          <td>${format(sensor.humi, 1)}</td>
@@ -281,6 +324,7 @@ function updateSensorData(data) {
 function format(value, format) {
     return value != null ? value.toFixed(format) : "-";
 }
+
 function fetchOutputData() {
   fetch('/api/output')
     .then(response => response.json())
@@ -299,6 +343,195 @@ function updateOutput(data) {
   }
 }
 
+async function fetchSensorConfigData() {
+  try {
+    const response = await fetch('/api/sensor_setup');
+    if (!response.ok) {
+      throw new Error('Sensor-Konfiguration konnte nicht geladen werden.');
+    }
+    updateSensorConfig(await response.json());
+  } catch (error) {
+    console.error('Fehler beim Laden der Sensor-Konfiguration:', error);
+  }
+}
+function updateSensorConfig(data) {
+  const tbody = document.querySelector('#sensorConfigTable tbody');
+  tbody.innerHTML = '';
+
+  (data.sensors || []).forEach(sensor => {
+    const row = document.createElement('tr');
+    row.dataset.sensorIndex = String(sensor.index);
+
+    const busCell = document.createElement('td');
+    busCell.textContent = String(sensor.bus);
+    const typeCell = document.createElement('td');
+    typeCell.textContent = sensor.type;
+
+    const nameCell = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.maxLength = 24;
+    nameInput.className = 'config-input';
+    nameInput.value = sensor.name || '';
+    nameCell.appendChild(nameInput);
+
+    const readCell = document.createElement('td');
+    const readCheckbox = document.createElement('input');
+    readCheckbox.type = 'checkbox';
+    readCheckbox.checked = !!sensor.rd;
+    readCell.appendChild(readCheckbox);
+
+    row.appendChild(busCell);
+    row.appendChild(typeCell);
+    row.appendChild(nameCell);
+    row.appendChild(readCell);
+    tbody.appendChild(row);
+  });
+}
+
+async function fetchSystemConfigData() {
+  try {
+    const response = await fetch('/api/system_setup');
+    if (!response.ok) {
+      throw new Error('Systemdaten konnten nicht geladen werden.');
+    }
+    updateSystemConfig(await response.json());
+  } catch (error) {
+    console.error('Fehler beim Laden der Systemdaten:', error);
+    document.getElementById('systemConfigMessage').textContent = error.message;
+  }
+}
+
+function updateSystemConfig(data) {
+  const tbody = document.querySelector('#systemConfigTable tbody');
+  tbody.innerHTML = '';
+  (data.buses || []).forEach(busData => {
+    const row = document.createElement('tr');
+    row.dataset.bus = String(busData.bus);
+
+    const busCell = document.createElement('td');
+    busCell.textContent = String(busData.bus);
+    const frequencyCell = document.createElement('td');
+    const frequencySelect = document.createElement('select');
+    frequencySelect.className = 'config-input';
+    [
+      { value: 0, text: '100KBit' },
+      { value: 1, text: '400KBit' }
+    ].forEach(optionData => {
+      const option = document.createElement('option');
+      option.value = String(optionData.value);
+      option.textContent = optionData.text;
+      frequencySelect.appendChild(option);
+    });
+    frequencySelect.value = String(busData.frequency);
+    frequencyCell.appendChild(frequencySelect);
+    row.appendChild(busCell);
+    row.appendChild(frequencyCell);
+    tbody.appendChild(row);
+  });
+  document.getElementById('systemConfigMessage').textContent = '';
+}
+
+async function saveSystemConfig() {
+  const rows = document.querySelectorAll('#systemConfigTable tbody tr');
+  const saveButton = document.getElementById('saveSystemConfigBtn');
+  const message = document.getElementById('systemConfigMessage');
+  const oldLabel = saveButton.textContent;
+  if (rows.length === 0) {
+    message.textContent = 'Es wurden keine I2C-Busse geladen.';
+    return;
+  }
+
+  const frequencies = Array.from(rows, row => Number(row.querySelector('select').value));
+  if (frequencies.some(frequency => frequency !== 0 && frequency !== 1)) {
+    message.textContent = 'Ungültige I2C-Frequenz.';
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+  try {
+    const response = await fetch('/set_system_setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frequencies })
+    });
+    if (!response.ok) {
+      throw new Error('Speichern der Systemdaten fehlgeschlagen.');
+    }
+    message.textContent = 'Gespeichert. Die Frequenzen werden nach einem Neustart verwendet.';
+  } catch (error) {
+    message.textContent = error.message || 'Speichern der Systemdaten fehlgeschlagen.';
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = oldLabel;
+  }
+}
+
+async function restartSystem() {
+  if (!confirm('Steuerung jetzt neu starten?')) {
+    return;
+  }
+
+  const restartButton = document.getElementById('restartSystemBtn');
+  const message = document.getElementById('systemConfigMessage');
+  restartButton.disabled = true;
+  message.textContent = 'Neustart wird ausgeführt...';
+  try {
+    const response = await fetch('/restart', { method: 'POST' });
+    if (!response.ok) {
+      throw new Error('Neustart konnte nicht angefordert werden.');
+    }
+    message.textContent = 'Neustart angefordert.';
+  } catch (error) {
+    message.textContent = error.message || 'Neustart konnte nicht angefordert werden.';
+  } finally {
+    restartButton.disabled = false;
+  }
+}
+
+async function saveAllSensorConfigs() {
+  const rows = document.querySelectorAll('#sensorConfigTable tbody tr');
+  const saveButton = document.getElementById('saveAllSensorConfigBtn');
+  const oldLabel = saveButton.textContent;
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+  try {
+    for (const row of rows) {
+      const sensorIndex = Number(row.dataset.sensorIndex);
+      const name = row.querySelector('input[type="text"]').value;
+      const readFlag = row.querySelector('input[type="checkbox"]').checked;
+      await saveSensorConfig(sensorIndex, name, readFlag);
+    }
+    await fetchSensorConfigData();
+  } catch (error) {
+    alert(error.message || 'Speichern fehlgeschlagen.');
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = oldLabel;
+  }
+}
+async function saveSensorConfig(sensorIndex, name, readFlag) {
+  const trimmedName = (name || '').trim();
+  if (trimmedName.length === 0 || trimmedName.length > 24) {
+    throw new Error('Der Name muss 1 bis 24 Zeichen lang sein.');
+  }
+
+  const response = await fetch('/set_sensor_setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sensor: Number(sensorIndex),
+      name: trimmedName,
+      rd: readFlag ? 1 : 0
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error('Speichern der Sensor-Konfiguration fehlgeschlagen.');
+  }
+}
+
 async function fetchOutputConfigData() {
   try {
     const response = await fetch('/api/output_setup');
@@ -308,7 +541,6 @@ async function fetchOutputConfigData() {
     console.error('Fehler beim Laden der Ausgangs-Konfiguration:', error);
   }
 }
-
 function updateOutputConfig(data) {
   const configChannels = data.channels || [];
   const rows = document.querySelectorAll('#outputConfigTable tbody tr');
@@ -317,15 +549,42 @@ function updateOutputConfig(data) {
     if (!row) continue;
     const nameInput = row.querySelector('input[type="text"]');
     const typeSelect = row.querySelector('select');
-    const readCheckbox = row.children[3].querySelector('input[type="checkbox"]');
-    const writeCheckbox = row.children[4].querySelector('input[type="checkbox"]');
     const valueInput = row.querySelector('input[type="number"]');
+    const readCheckbox = row.children[4].querySelector('input[type="checkbox"]');
+    const writeCheckbox = row.children[5].querySelector('input[type="checkbox"]');
     const channel = configChannels.find(item => item.channel === i) || { name: 'OUT' + (i + 1), type: 1, value: 0, rd: false, wr: false };
     nameInput.value = channel.name || ('OUT' + (i + 1));
     typeSelect.value = String(channel.type || 1);
+    valueInput.value = String(channel.value || 0);
     readCheckbox.checked = !!channel.rd;
     writeCheckbox.checked = !!channel.wr;
-    valueInput.value = String(channel.value || 0);
+  }
+}
+
+async function saveAllOutputConfigs() {
+  const rows = document.querySelectorAll('#outputConfigTable tbody tr');
+  const saveButton = document.getElementById('saveAllOutputConfigBtn');
+  const oldLabel = saveButton.textContent;
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const nameInput = row.querySelector('input[type="text"]');
+      const typeSelect = row.querySelector('select');
+      const valueInput = row.querySelector('input[type="number"]');
+      const readCheckbox = row.children[4].querySelector('input[type="checkbox"]');
+      const writeCheckbox = row.children[5].querySelector('input[type="checkbox"]');
+
+      await saveOutputConfig(i, nameInput.value, typeSelect.value, valueInput.value, readCheckbox.checked, writeCheckbox.checked);
+    }
+    fetchOutputConfigData();
+  } catch (error) {
+    alert(error.message || 'Speichern fehlgeschlagen.');
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = oldLabel;
   }
 }
 
@@ -341,7 +600,7 @@ async function saveOutputConfig(channel, name, type, value, readFlag, writeFlag)
     throw new Error('Bitte einen gültigen Ausgangstyp wählen.');
   }
   if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 1000) {
-    throw new Error('Der Standardwert muss ein Integerwert zwischen 0 und 1000 sein.');
+    throw new Error('Der Fix-Wert muss im Bereich 0 bis 1000 sein.');
   }
 
   const response = await fetch('/set_output_setup', {
@@ -359,34 +618,6 @@ async function saveOutputConfig(channel, name, type, value, readFlag, writeFlag)
 
   if (!response.ok) {
     throw new Error('Speichern fehlgeschlagen.');
-  }
-}
-
-async function saveAllOutputConfigs() {
-  const rows = document.querySelectorAll('#outputConfigTable tbody tr');
-  const saveButton = document.getElementById('saveAllOutputConfigBtn');
-  const oldLabel = saveButton.textContent;
-  saveButton.disabled = true;
-  saveButton.textContent = 'Speichern...';
-
-  try {
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const nameInput = row.querySelector('input[type="text"]');
-      const typeSelect = row.querySelector('select');
-      const readCheckbox = row.children[3].querySelector('input[type="checkbox"]');
-      const writeCheckbox = row.children[4].querySelector('input[type="checkbox"]');
-      const valueInput = row.querySelector('input[type="number"]');
-
-      await saveOutputConfig(i, nameInput.value, typeSelect.value, valueInput.value, readCheckbox.checked, writeCheckbox.checked);
-    }
-    fetchOutputConfigData();
-    fetchOutputData();
-  } catch (error) {
-    alert(error.message || 'Speichern fehlgeschlagen.');
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = oldLabel;
   }
 }
 
@@ -424,9 +655,11 @@ function fetchData() {
 createSliders(OutputChannels);
 createOutputConfigRows();
 document.getElementById('saveAllOutputConfigBtn').addEventListener('click', saveAllOutputConfigs);
+document.getElementById('saveAllSensorConfigBtn').addEventListener('click', saveAllSensorConfigs);
+document.getElementById('saveSystemConfigBtn').addEventListener('click', saveSystemConfig);
+document.getElementById('restartSystemBtn').addEventListener('click', restartSystem);
 setInterval(fetchData, 2000);
 fetchData();
-fetchOutputConfigData();
 </script>
 </body>
 </html>

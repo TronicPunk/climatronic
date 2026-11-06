@@ -57,6 +57,7 @@ typedef struct
 {
    const T_sensor_type* pt_Sensor;  // sensor type info
    const char * s_Name;             // sensor name
+   uint8_t u8_Flags;                // sensor configuration flags
    uint32_t u32_IicFreq;            // IIC clock frequency
    uint8_t u8_IicBus;               // sensor IIC bus number
    uint8_t u8_IicAddr;              // sensor IIC bus address
@@ -69,6 +70,7 @@ typedef struct
 esp_err_t sensor_init_task(void);   // init the sensor measurement process
 uint16_t  sensor_get_count(void);   // get number of initialized sensors
 esp_err_t sensor_get_info(const uint16_t ou16_SensorIdx, T_sensor_info * const opt_SensorInfo);
+esp_err_t sensor_set_setup(const uint16_t ou16_SensorIdx, const char * const oac_SensorName, const uint8_t ou8_SensorFlags);
 esp_err_t sensor_process_data(const uint16_t ou16_SensorIdx);
 esp_err_t sensor_get_data(const uint16_t ou16_SensorIdx, T_sensor_data * const opt_SensorData);
 esp_err_t sensor_command(const uint16_t ou16_SensorIdx, const uint16_t ou16_Command, uint32_t * const  opu32_Parameter);
