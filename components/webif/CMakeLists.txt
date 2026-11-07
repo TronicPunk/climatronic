@@ -10,9 +10,10 @@ idf_component_register(
       esp_timer
       nvs_flash
       mdns
+      inout
+      system
       sensor
       output
-      system_data
 )
 
 # HTML-Datei einbinden (als binary)

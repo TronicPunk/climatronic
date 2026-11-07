@@ -11,6 +11,7 @@
 #include "sensor_api.h"
 #include "output.h"
 #include "system_data.h"
+#include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdlib.h>
@@ -581,7 +582,7 @@ static esp_err_t m_post_handler_restart(httpd_req_t *req)
 {
    httpd_resp_sendstr(req, "Restarting");
    vTaskDelay(pdMS_TO_TICKS(250));
-   esp_restart();
+   system_sw_reset();
    return ESP_OK;
 }
 

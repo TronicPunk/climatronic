@@ -91,6 +91,10 @@ esp_err_t iic_mux_set(const uint8_t ou8_Channel)
    if (ou8_Channel != mu8_MuxChannel)
    {
       const uint8_t u8_MuxData = (ou8_Channel < IIC_MUX_CHANNEL_MAX) ? (uint8_t)(1u << ou8_Channel) : 0u;
+
+      // TBD: iic_mux_reset disturbes communication
+//      iic_mux_reset(); // disconnect any external bus lines
+      // connect I2C bus adressed by ou8_Channel
       t_Err = i2c_master_transmit(mt_IicDevHandle_Mux, &u8_MuxData, 1, IIC_MUX_TIMEOUT_MS);
 
       if (t_Err == ESP_OK)

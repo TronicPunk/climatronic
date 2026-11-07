@@ -1,4 +1,9 @@
-// === wifi_connect.c ===
+/*
+   wifi_connect.c
+   establish WIFI connection
+*/
+
+/* --- Includes ------------------------------------------------------------ */
 #include "wifi_connect.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -8,15 +13,31 @@
 #include "freertos/event_groups.h"
 #include "sdkconfig.h"
 #include "mdns.h"
+#include "inout.h"
 #include <string.h>
 
+/* -- Defines ------------------------------------------------------------------------------------------------------- */
+#define WIFI_SSID                   "<tbd>"
+#define WIFI_PASS                   "<tbd>"
+#define WIFI_HOST_NAME              "clima_control"
 
-#define WIFI_SSID       "<tbd>"
-#define WIFI_PASS       "<tbd>"
+#define WIFI_CONNECTED_BIT          BIT0
+#define WIFI_RECONNECT_TIME_US      5000000ULL     // reconnect retry time delay in micro seconds
+#define WIFI_STATUS_LED_NOWIFI      0x00C80000uL   // no WIFI: LED red
+#define WIFI_STATUS_LED_NOACCESS    0x00C82000uL   // WIFI no access data: LED orange
+#define WIFI_STATUS_LED_NOCONNECT   0x00A06000uL   // WIFI not connected: LED yellow
+#define WIFI_STATUS_LED_CONNECT     0x0028F028uL   // WIFI connected: LED light green
 
-#define ESP32_HOST_NAME "clima_control"
-#define WIFI_CONNECTED_BIT BIT0
 
+/* -- Types --------------------------------------------------------------------------------------------------------- */
+
+/* -- Function Prototypes ------------------------------------------------------------------------------------------- */
+static void m_wifi_retry_timer_cb(void *arg);
+static void m_wifi_start_retry_timer(void);
+static void m_wifi_stop_retry_timer(void);
+static void m_wifi_log_connection_health(void);
+
+/* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
 static EventGroupHandle_t wifi_event_group;
 static const char *TAG = "wifi";
 static uint32_t wifi_disconnect_count = 0u;
@@ -24,24 +45,35 @@ static uint32_t wifi_connect_count = 0u;
 static int8_t wifi_last_rssi = 0;
 static esp_timer_handle_t wifi_retry_timer = NULL;
 
-static void wifi_retry_timer_cb(void *arg)
+/* -- Implementation ------------------------------------------------------------------------------------------------ */
+
+/**
+ * cyclic wifi connect retry timer, started when WIFI connection is lost
+ */
+static void m_wifi_retry_timer_cb(void *arg)
 {
    if ((wifi_event_group != NULL) && ((xEventGroupGetBits(wifi_event_group) & WIFI_CONNECTED_BIT) == 0u))
    {
-       ESP_LOGW(TAG, "Retrying WiFi connection after disconnect...");
+//       ESP_LOGW(TAG, "Retrying WiFi connection after disconnect...");
        esp_wifi_connect();
    }
 }
 
-static void wifi_start_retry_timer(void)
+/**
+ * start cyclic wifi re-connect timer
+ */
+static void m_wifi_start_retry_timer(void)
 {
    if (wifi_retry_timer != NULL)
    {
-      esp_timer_start_periodic(wifi_retry_timer, 5000000ULL);
+      esp_timer_start_periodic(wifi_retry_timer, WIFI_RECONNECT_TIME_US);
    }
 }
 
-static void wifi_stop_retry_timer(void)
+/**
+ * stop cyclic wifi re-connect timer
+ */
+static void m_wifi_stop_retry_timer(void)
 {
    if (wifi_retry_timer != NULL)
    {
@@ -49,7 +81,10 @@ static void wifi_stop_retry_timer(void)
    }
 }
 
-static void wifi_log_connection_health(void)
+/**
+ * get wifi connection status
+ */
+static void m_wifi_log_connection_health(void)
 {
    wifi_ap_record_t ap_info;
    memset(&ap_info, 0, sizeof(ap_info));
@@ -88,13 +123,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
          {
             wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
             xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+            io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_CONNECT);
             wifi_disconnect_count++;
             ESP_LOGW(TAG,
                      "WiFi disconnected #%lu, reason=%d, last_rssi=%d dBm, reconnecting...",
                      (unsigned long)wifi_disconnect_count,
                      event ? event->reason : -1,
                      wifi_last_rssi);
-            wifi_start_retry_timer();
+            m_wifi_start_retry_timer();
             break;
          }
 
@@ -104,10 +140,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
    }
    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
    {
-      wifi_stop_retry_timer();
+      m_wifi_stop_retry_timer();
       xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
       wifi_connect_count++;
-      wifi_log_connection_health();
+      m_wifi_log_connection_health();
+      io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_CONNECT);
       ESP_LOGI(TAG, "Connected to WiFi -- total connects: %lu", (unsigned long)wifi_connect_count);
    }
 }
@@ -122,7 +159,7 @@ void wifi_connect(void)
    // create WIFI reconnect timer
    const esp_timer_create_args_t timer_args =
    {
-      .callback = &wifi_retry_timer_cb,
+      .callback = &m_wifi_retry_timer_cb,
       .arg = NULL,
       .dispatch_method = ESP_TIMER_TASK,
       .name = "wifi_retry"
@@ -160,7 +197,7 @@ void wifi_connect(void)
 
 void wifi_reset(void)
 {
-   wifi_stop_retry_timer();
+   m_wifi_stop_retry_timer();
    esp_wifi_disconnect();
    esp_wifi_stop();
    esp_wifi_deinit();
@@ -176,7 +213,7 @@ void wifi_reset(void)
 void start_mdns_service(void)
 {
     mdns_init();
-    mdns_hostname_set(ESP32_HOST_NAME);         // Hostname: <host_name>.local
+    mdns_hostname_set(WIFI_HOST_NAME);         // Hostname: <host_name>.local
     mdns_instance_name_set("ESP32 Web");
 
     // Optional: Dienst registrieren

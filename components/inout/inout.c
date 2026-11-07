@@ -56,7 +56,7 @@ esp_err_t io_init(void)
       .strip_gpio_num = GPIO_RGB_LED,
       .max_leds = STATUS_LED_COUNT,
       .led_model = LED_MODEL_WS2812,
-      .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB,
+      .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
    };
    led_strip_rmt_config_t t_RmtConfig =
    {
@@ -85,7 +85,6 @@ esp_err_t io_init(void)
    led_strip_new_rmt_device(&t_LedStripConfig, &t_RmtConfig, &mt_LedStrip);
    led_strip_set_pixel(mt_LedStrip, STATUS_LED_SENSOR, 0u, 0u, 0u);
    led_strip_set_pixel(mt_LedStrip, STATUS_LED_WLAN, 0u, 0u, 0u);
-   io_set_led(STATUS_LED_CPU, 0x808000uL);
 
    if (t_Err == ESP_OK)
    {
@@ -94,7 +93,6 @@ esp_err_t io_init(void)
    }
    else
    {
-      io_set_led(STATUS_LED_CPU, 0x0000FFuL);
       t_Err = ESP_FAIL;
    }
 
@@ -126,17 +124,28 @@ uint32_t io_get_sensor_supply_voltage(void)
 }
 
 /**
+ * disable all status LEDs
+ */
+void io_set_led_off(void)
+{
+   for (uint32_t u32_LED = 0u; u32_LED < STATUS_LED_COUNT; u32_LED++)
+   {
+      io_set_led(u32_LED, 0x000000uL);
+   }
+}
+
+/**
  * set status LED color:
  * ou32_Led = LED selector 0..2
- * ou32_Color = LED RGB color value R=[bit0..7], G=[bit8..15], B=[bit16..23]
+ * ou32_Color = LED RGB color value R=[bit16..23], G=[bit8..15], B=[bit8..7]
  */
 void io_set_led(const uint32_t ou32_Led, const uint32_t ou32_Color)
 {
    if ((mt_LedStrip != NULL) && (ou32_Led < STATUS_LED_COUNT))
    {
-      const uint32_t u32_R = ou32_Color & 0xFFuL;
-      const uint32_t u32_G = (ou32_Color >>  8u) & 0xFFuL;
-      const uint32_t u32_B = (ou32_Color >> 16u) & 0xFFuL;
+      const uint32_t u32_R = (ou32_Color & STATUS_LED_RED_MSK) >> STATUS_LED_RED_BITPOS;
+      const uint32_t u32_G = (ou32_Color & STATUS_LED_GREEN_MSK) >> STATUS_LED_GREEN_BITPOS;
+      const uint32_t u32_B = (ou32_Color & STATUS_LED_BLUE_MSK) >> STATUS_LED_BLUE_BITPOS;
 
       led_strip_set_pixel(mt_LedStrip, ou32_Led, u32_R, u32_G, u32_B);
       led_strip_refresh(mt_LedStrip);

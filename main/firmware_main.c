@@ -99,7 +99,9 @@ void app_main(void)
    __force_link_bme68x();
    __force_link_scd4x();
 
-   io_init();        // init IO signals
+   io_init();        // init IO
+   io_set_led_off();
+
    ESP_ERROR_CHECK(nvs_flash_init());
    serial_init();
 

@@ -14,10 +14,7 @@
 #include "iic_eeprom.h"
 #include "inout.h"
 #include "timer.h"
-#include "nvs_flash.h"
-#include "wifi_connect.h"
-#include "webserver.h"
-#include "esp_system.h"
+#include "system.h"
 #include "esp_wifi.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
@@ -28,9 +25,9 @@
 
 static void m_menu_system(void);
 static void m_toggle_usens_en(void);
+static int32_t m_set_led(void);
 static int32_t m_setup_i2c_bus_freq(void);
 static int32_t m_wifi_connection_health(void);
-static void m_sys_sw_reset(void);
 
 /* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
 
@@ -40,13 +37,14 @@ const T_Menu gt_MenuSystemSetup =
    MENU_MAGIC,       // menu structure identification
    &m_menu_system,   // show system setup menu
    NULL,             // menu exit function
-   5,                // number of menu entries
+   6,                // number of menu entries
    {
       (void *)&m_toggle_usens_en,         // toggle signal usens_en
+      (void *)&m_set_led,                 // set LEDs
       (void *)&gt_MenuEepromTest,         // menu EEPROM test
       (void *)&m_setup_i2c_bus_freq,      // setup I2C bus frequency
       (void *)&m_wifi_connection_health,  // WIFI connection information
-      (void *)&m_sys_sw_reset,            // ECU software reset
+      (void *)&system_sw_reset,            // ECU software reset
    }
 };
 
@@ -62,10 +60,11 @@ static void m_menu_system(void)
    printf(" [1]  Toggle Sensor Supply\r\n");
    printf("      Usens  = %lu mV\r\n", adc_read_mv(ADC_USENS));
    printf("      Button = 0x%02lX\r\n", io_get_switch_button());
-   printf(" [2]  Test EEPROM\r\n");
-   printf(" [3]  Set I2C bus frequency\r\n");
-   printf(" [4]  WIFI Status\r\n");
-   printf(" [5]  Reset\r\n\n");
+   printf(" [2]  Set LED\r\n");
+   printf(" [3]  Test EEPROM\r\n");
+   printf(" [4]  Set I2C bus frequency\r\n");
+   printf(" [5]  WIFI Status\r\n");
+   printf(" [6]  Reset\r\n\n");
    printf("[ESC] return to previous menu\r\n");
 }
 
@@ -80,6 +79,110 @@ static void m_toggle_usens_en(void)
    {
       iic_eeprom_is_ready();
    }
+}
+
+
+//-----------------------------------------------------------------------------
+/*!
+   \brief    set LEDss manually
+
+   \return   C_NOACT    terminated with no error
+*/
+//-----------------------------------------------------------------------------
+static int32_t m_set_led(void)
+{
+   char * as_LEDs[STATUS_LED_COUNT] = { "SENS", "WLAN", " CPU" };
+   uint32_t u32_LED = STATUS_LED_SENSOR;
+   uint32_t u32_Color = io_get_led_color(u32_LED);
+   uint8_t u8_Red = (uint8_t)((u32_Color & STATUS_LED_RED_MSK) >> STATUS_LED_RED_BITPOS);
+   uint8_t u8_Green = (uint8_t)((u32_Color & STATUS_LED_GREEN_MSK) >> STATUS_LED_GREEN_BITPOS);
+   uint8_t u8_Blue = (uint8_t)((u32_Color & STATUS_LED_BLUE_MSK) >> STATUS_LED_BLUE_BITPOS);
+   uint8_t u8_Key = 0u;
+
+   clr_scr();
+   printf("------------------------------------------\r\n");
+   printf(" set LEDs\r\n");
+   printf("------------------------------------------\r\n\n");
+   printf(" [1]  select LED  [SENS]\r\n");
+   printf("[r,R] set red      [  0]\r\n");
+   printf("[g,G] set green    [  0]\r\n");
+   printf("[b,B] set blue     [  0]\r\n");
+   printf("      color      #000000\r\n\n");
+   printf("[ESC] terminate setup");
+
+   serial_clear_rx_buf(); // clear RX buffer
+
+   while (u8_Key != 0x1Bu)
+   {
+      if (u8_Key == '1')
+      {
+         u32_LED++;
+         if (u32_LED >= STATUS_LED_COUNT)
+         {
+            u32_LED = STATUS_LED_SENSOR;
+         }
+         u32_Color = io_get_led_color(u32_LED);
+         u8_Red = (uint8_t)((u32_Color & STATUS_LED_RED_MSK) >> STATUS_LED_RED_BITPOS);
+         u8_Green = (uint8_t)((u32_Color & STATUS_LED_GREEN_MSK) >> STATUS_LED_GREEN_BITPOS);
+         u8_Blue = (uint8_t)((u32_Color & STATUS_LED_BLUE_MSK) >> STATUS_LED_BLUE_BITPOS);
+      }
+      if ((u8_Key == 'r') || (u8_Key == 'R'))
+      {
+         if (u8_Key == 'r')
+         {
+            u8_Red--;
+         }
+         else
+         {
+            u8_Red++;
+         }
+         u32_Color &= (uint32_t)(~STATUS_LED_RED_MSK);
+         u32_Color |= ((uint32_t)u8_Red << STATUS_LED_RED_BITPOS);
+      }
+      if ((u8_Key == 'g') || (u8_Key == 'G'))
+      {
+         if (u8_Key == 'g')
+         {
+            u8_Green--;
+         }
+         else
+         {
+            u8_Green++;
+         }
+         u32_Color &= (uint32_t)(~STATUS_LED_GREEN_MSK);
+         u32_Color |= ((uint32_t)u8_Green << STATUS_LED_GREEN_BITPOS);
+      }
+      if ((u8_Key == 'b') || (u8_Key == 'B'))
+      {
+         if (u8_Key == 'b')
+         {
+            u8_Blue--;
+         }
+         else
+         {
+            u8_Blue++;
+         }
+         u32_Color &= (uint32_t)(~STATUS_LED_BLUE_MSK);
+         u32_Color |= ((uint32_t)u8_Blue << STATUS_LED_BLUE_BITPOS);
+      }
+
+      set_cursor(20u, 5u);
+      printf("%s", as_LEDs[u32_LED]);
+      set_cursor(21u, 6u);
+      printf("%3u", u8_Red);
+      set_cursor(21u, 7u);
+      printf("%3u", u8_Green);
+      set_cursor(21u, 8u);
+      printf("%3u", u8_Blue);
+      set_cursor(19u, 9u);
+      printf("%06lX", u32_Color);
+
+      io_set_led(u32_LED, u32_Color);
+
+      u8_Key = get_key();
+   }
+
+   return 1;
 }
 
 static int32_t m_setup_i2c_bus_freq(void)
@@ -157,20 +260,4 @@ static int32_t m_wifi_connection_health(void)
    }
 
    return 1;
-}
-
-
-
-//-----------------------------------------------------------------------------
-/*!
-   \brief    do controller software reset
-*/
-//-----------------------------------------------------------------------------
-static void m_sys_sw_reset(void)
-{
-   nvs_flash_deinit();
-   stop_webserver();
-   stop_mdns_service();
-   wifi_reset();
-   esp_restart();
 }

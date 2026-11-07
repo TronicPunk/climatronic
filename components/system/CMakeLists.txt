@@ -1,9 +1,13 @@
 idf_component_register(
    SRCS
       system_data.c
+      system.c
    INCLUDE_DIRS
       "."
    PRIV_REQUIRES
-      nvm_data
       iic_eeprom
+      nvm_data
+      inout
+      nvs_flash
+      webif
 )
