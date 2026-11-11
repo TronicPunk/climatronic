@@ -184,7 +184,7 @@ esp_err_t device_data_set_wifipw(const char * const oac_WiFiPw)
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
    const uint32_t u32_WiFiPwLen = strnlen(oac_WiFiPw, WIFI_PASSWORD_MAX + 1u);
 
-   if ((u32_WiFiPwLen > 0u) && (u32_WiFiPwLen <= WIFI_PASSWORD_MAX))
+   if (u32_WiFiPwLen <= WIFI_PASSWORD_MAX)
    {
       T_device_data_nvm * pt_DeviceData = &mt_DeviceDataCrc.t_DeviceData;
       if (strncmp(pt_DeviceData->ac_WiFiPw, oac_WiFiPw, WIFI_PASSWORD_MAX) != 0)

@@ -74,6 +74,21 @@
          gap: 12px;
          justify-content: flex-start;
       }
+      .wifi-config {
+         display: grid;
+         grid-template-columns: minmax(150px, 220px) minmax(220px, 420px);
+         gap: 12px;
+         align-items: center;
+         max-width: 700px;
+      }
+      .wifi-config input {
+         min-width: 0;
+      }
+      .wifi-help {
+         grid-column: 2;
+         margin-top: -8px;
+         color: #555;
+      }
    </style>
 </head>
 <body>
@@ -83,6 +98,7 @@
   <button class="tab" data-tab="setup-sensor">Sensoren konfigurieren</button>
   <button class="tab" data-tab="setup-output">Ausgänge konfigurieren</button>
   <button class="tab" data-tab="setup-system">Systemdaten</button>
+  <button class="tab" data-tab="setup-wifi">WLAN konfigurieren</button>
 </div>
 
 <section id="tab-monitor" class="tab-panel active">
@@ -172,10 +188,55 @@
    <p id="systemConfigMessage" role="status"></p>
 </section>
 
+<section id="tab-setup-wifi" class="tab-panel">
+   <h2>WLAN-Konfiguration</h2>
+   <div class="wifi-config">
+      <label for="wifiHostname">Host-Name</label>
+      <input id="wifiHostname" class="config-input" type="text" maxlength="25" required>
+      <span class="wifi-help">Maximal 25 Zeichen.</span>
+
+      <label for="wifiApSelect">Verfügbare Access Points</label>
+      <div>
+         <select id="wifiApSelect" class="config-input">
+            <option value="">Access Points suchen...</option>
+         </select>
+         <button id="scanWifiBtn" type="button">Suchen</button>
+      </div>
+
+      <label for="wifiSsid">WIFI SSID</label>
+      <input id="wifiSsid" class="config-input" type="text" maxlength="32" required>
+      <span class="wifi-help">Maximal 32 Zeichen.</span>
+
+      <label for="wifiBssid">WIFI BSSID</label>
+      <input id="wifiBssid" class="config-input" type="text" maxlength="17"
+             placeholder="AA:BB:CC:DD:EE:FF" pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}">
+      <span class="wifi-help">Leer = BSSID nicht festlegen; sonst 6 Hex-Bytes.</span>
+
+      <label for="wifiPassword">WIFI Passwort</label>
+      <div>
+         <input id="wifiPassword" class="config-input" type="password" maxlength="63" autocomplete="new-password">
+         <button id="toggleWifiPasswordBtn" type="button" aria-label="Passwort anzeigen">Anzeigen</button>
+      </div>
+      <span class="wifi-help">Leer lassen, um das gespeicherte Passwort beizubehalten.</span>
+
+      <span>Netzwerksicherheit</span>
+      <label><input id="wifiOpenNetwork" type="checkbox"> Offenes WLAN (gespeichertes Passwort löschen)</label>
+      <span class="wifi-help">Für ein WLAN ohne Passwort aktivieren.</span>
+   </div>
+   <div class="setup-actions">
+      <button id="saveWifiConfigBtn" type="button" class="save-btn">Speichern</button>
+   </div>
+   <p id="wifiConfigMessage" role="status"></p>
+</section>
+
 <script>
 let SensorCount = -1;
 let OutputChannels = 8;
 let CurrentMode = "auto";
+let WifiConfigLoaded = false;
+let SavedWifiSsid = "";
+let SavedWifiOpenNetwork = false;
+let WifiScanResults = [];
 
 function setTab(tabId) {
  document.querySelectorAll('.tab').forEach(tab => {
@@ -190,6 +251,8 @@ function setTab(tabId) {
      fetchSensorConfigData();
    } else if (isActive && tabId === 'setup-system') {
      fetchSystemConfigData();
+   } else if (isActive && tabId === 'setup-wifi') {
+     fetchWifiConfigData();
    }
  });
 }
@@ -432,6 +495,137 @@ function updateSystemConfig(data) {
   document.getElementById('systemConfigMessage').textContent = '';
 }
 
+async function fetchWifiConfigData() {
+  if (WifiConfigLoaded) {
+    return;
+  }
+  const message = document.getElementById('wifiConfigMessage');
+  try {
+    const response = await fetch('/api/wifi_config');
+    if (!response.ok) {
+      throw new Error('WLAN-Konfiguration konnte nicht geladen werden.');
+    }
+    const data = await response.json();
+    document.getElementById('wifiHostname').maxLength = data.limits.hostname;
+    document.getElementById('wifiHostname').value = data.hostname;
+    document.getElementById('wifiSsid').maxLength = data.limits.ssid;
+    document.getElementById('wifiSsid').value = data.ssid;
+    SavedWifiSsid = data.ssid;
+    document.getElementById('wifiBssid').value = data.bssid;
+    document.getElementById('wifiPassword').maxLength = data.limits.password;
+    SavedWifiOpenNetwork = data.openNetwork;
+    document.getElementById('wifiPassword').placeholder = data.passwordSet
+      ? 'Gespeichert; leer lassen = beibehalten'
+      : 'Noch kein Passwort gespeichert';
+    document.getElementById('wifiOpenNetwork').checked = data.openNetwork;
+    document.getElementById('wifiPassword').disabled = data.openNetwork;
+    WifiConfigLoaded = true;
+    message.textContent = '';
+  } catch (error) {
+    console.error('Fehler beim Laden der WLAN-Konfiguration:', error);
+    message.textContent = error.message;
+  }
+}
+
+async function scanWifiAccessPoints() {
+  const button = document.getElementById('scanWifiBtn');
+  const select = document.getElementById('wifiApSelect');
+  const message = document.getElementById('wifiConfigMessage');
+  button.disabled = true;
+  button.textContent = 'Suche...';
+  try {
+    const response = await fetch('/api/wifi_scan');
+    if (!response.ok) {
+      throw new Error('WLAN-Suche fehlgeschlagen.');
+    }
+    const data = await response.json();
+    WifiScanResults = data.aps || [];
+    select.replaceChildren(new Option('Access Point auswählen...', ''));
+    WifiScanResults.forEach((ap, index) => {
+      const ssid = ap.ssid || '(versteckte SSID)';
+      const option = new Option(`${ssid} — ${ap.rssi} dBm, Kanal ${ap.channel}`, String(index));
+      select.add(option);
+    });
+    message.textContent = WifiScanResults.length
+      ? `${WifiScanResults.length} Access Point(s) gefunden.`
+      : 'Keine Access Points gefunden.';
+  } catch (error) {
+    message.textContent = error.message || 'WLAN-Suche fehlgeschlagen.';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Suchen';
+  }
+}
+
+function selectWifiAccessPoint() {
+  const index = Number(document.getElementById('wifiApSelect').value);
+  if (!Number.isInteger(index) || index < 0 || index >= WifiScanResults.length) {
+    return;
+  }
+  const ap = WifiScanResults[index];
+  if (ap.ssid !== document.getElementById('wifiSsid').value) {
+    document.getElementById('wifiPassword').value = '';
+  }
+  document.getElementById('wifiSsid').value = ap.ssid;
+  document.getElementById('wifiBssid').value = ap.bssid;
+  const isOpen = ap.auth === 0;
+  document.getElementById('wifiOpenNetwork').checked = isOpen;
+  const passwordInput = document.getElementById('wifiPassword');
+  if (isOpen) {
+    passwordInput.value = '';
+  }
+  passwordInput.disabled = isOpen;
+}
+
+async function saveWifiConfig() {
+  const message = document.getElementById('wifiConfigMessage');
+  const saveButton = document.getElementById('saveWifiConfigBtn');
+  if (!document.getElementById('wifiHostname').value.trim()) {
+    message.textContent = 'Bitte einen Host-Namen eingeben.';
+    return;
+  }
+  if (!document.getElementById('wifiSsid').value) {
+    message.textContent = 'Bitte eine WLAN-SSID eingeben.';
+    return;
+  }
+  const ssid = document.getElementById('wifiSsid').value;
+  const password = document.getElementById('wifiPassword').value;
+  const openNetwork = document.getElementById('wifiOpenNetwork').checked;
+  if (!openNetwork && !password && (ssid !== SavedWifiSsid || SavedWifiOpenNetwork)) {
+    message.textContent = 'Für ein neues WLAN bitte das Passwort eingeben oder ein offenes WLAN auswählen.';
+    return;
+  }
+  if (!document.getElementById('wifiBssid').checkValidity()) {
+    message.textContent = 'Die BSSID muss leer sein oder dem Format AA:BB:CC:DD:EE:FF entsprechen.';
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+  try {
+    const response = await fetch('/set_wifi_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostname: document.getElementById('wifiHostname').value,
+        ssid,
+        bssid: document.getElementById('wifiBssid').value,
+        password,
+        openNetwork
+      })
+    });
+    if (!response.ok) {
+      throw new Error(await response.text() || 'WLAN-Konfiguration konnte nicht gespeichert werden.');
+    }
+    message.textContent = 'Gespeichert. Der ESP32 startet neu und verbindet sich mit dem konfigurierten WLAN.';
+  } catch (error) {
+    message.textContent = error.message || 'WLAN-Konfiguration konnte nicht gespeichert werden.';
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = 'Speichern';
+  }
+}
+
 async function saveSystemConfig() {
   const rows = document.querySelectorAll('#systemConfigTable tbody tr');
   const saveButton = document.getElementById('saveSystemConfigBtn');
@@ -658,6 +852,33 @@ document.getElementById('saveAllOutputConfigBtn').addEventListener('click', save
 document.getElementById('saveAllSensorConfigBtn').addEventListener('click', saveAllSensorConfigs);
 document.getElementById('saveSystemConfigBtn').addEventListener('click', saveSystemConfig);
 document.getElementById('restartSystemBtn').addEventListener('click', restartSystem);
+document.getElementById('scanWifiBtn').addEventListener('click', scanWifiAccessPoints);
+document.getElementById('wifiApSelect').addEventListener('change', selectWifiAccessPoint);
+document.getElementById('wifiSsid').addEventListener('change', event => {
+  if (event.target.value !== SavedWifiSsid) {
+    document.getElementById('wifiPassword').value = '';
+    document.getElementById('wifiOpenNetwork').checked = false;
+    document.getElementById('wifiPassword').disabled = false;
+  } else {
+    document.getElementById('wifiOpenNetwork').checked = SavedWifiOpenNetwork;
+    document.getElementById('wifiPassword').disabled = SavedWifiOpenNetwork;
+  }
+});
+document.getElementById('saveWifiConfigBtn').addEventListener('click', saveWifiConfig);
+document.getElementById('toggleWifiPasswordBtn').addEventListener('click', () => {
+  const passwordInput = document.getElementById('wifiPassword');
+  const showPassword = passwordInput.type === 'password';
+  passwordInput.type = showPassword ? 'text' : 'password';
+  document.getElementById('toggleWifiPasswordBtn').textContent = showPassword ? 'Verbergen' : 'Anzeigen';
+  document.getElementById('toggleWifiPasswordBtn').setAttribute('aria-label', showPassword ? 'Passwort verbergen' : 'Passwort anzeigen');
+});
+document.getElementById('wifiOpenNetwork').addEventListener('change', event => {
+  const passwordInput = document.getElementById('wifiPassword');
+  passwordInput.disabled = event.target.checked;
+  if (event.target.checked) {
+    passwordInput.value = '';
+  }
+});
 setInterval(fetchData, 2000);
 fetchData();
 </script>

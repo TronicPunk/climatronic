@@ -16,6 +16,7 @@
 #include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -50,13 +51,16 @@ static esp_err_t m_get_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req);
+static esp_err_t m_get_handler_wifi_config(httpd_req_t *req);
 static esp_err_t m_set_handler_output(httpd_req_t *req);
 static esp_err_t m_set_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_system_setup(httpd_req_t *req);
+static esp_err_t m_set_handler_wifi_config(httpd_req_t *req);
 static esp_err_t m_post_handler_restart(httpd_req_t *req);
 static esp_err_t m_set_handler_mode(httpd_req_t *req);
 static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, char *dst, const size_t dst_size);
+static bool m_json_parse_string(const char **cursor, char *dst, const size_t dst_size);
 
 /* --- Implementation ------------------------------------------------------ */
 
@@ -180,6 +184,179 @@ static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, cha
       dst[idx] = '\0';
    }
    return idx;
+}
+
+static void m_json_skip_whitespace(const char **cursor)
+{
+   while ((**cursor == ' ') || (**cursor == '\t') || (**cursor == '\r') || (**cursor == '\n'))
+   {
+      (*cursor)++;
+   }
+}
+
+static bool m_json_read_hex4(const char **cursor, uint32_t *value)
+{
+   uint32_t result = 0u;
+   for (uint8_t i = 0u; i < 4u; i++)
+   {
+      const char c = *(*cursor)++;
+      if (c == '\0')
+      {
+         return false;
+      }
+      uint8_t digit;
+      if ((c >= '0') && (c <= '9'))
+      {
+         digit = (uint8_t)(c - '0');
+      }
+      else if ((c >= 'a') && (c <= 'f'))
+      {
+         digit = (uint8_t)(c - 'a' + 10);
+      }
+      else if ((c >= 'A') && (c <= 'F'))
+      {
+         digit = (uint8_t)(c - 'A' + 10);
+      }
+      else
+      {
+         return false;
+      }
+      result = (result << 4u) | digit;
+   }
+   *value = result;
+   return true;
+}
+
+static bool m_json_append_codepoint(char *dst, const size_t dst_size, size_t *length, const uint32_t codepoint)
+{
+   uint8_t encoded[4];
+   size_t encoded_length;
+
+   if ((codepoint == 0u) || (codepoint > 0x10FFFFu) ||
+       ((codepoint >= 0xD800u) && (codepoint <= 0xDFFFu)))
+   {
+      return false;
+   }
+   if (codepoint <= 0x7Fu)
+   {
+      encoded[0] = (uint8_t)codepoint;
+      encoded_length = 1u;
+   }
+   else if (codepoint <= 0x7FFu)
+   {
+      encoded[0] = (uint8_t)(0xC0u | (codepoint >> 6u));
+      encoded[1] = (uint8_t)(0x80u | (codepoint & 0x3Fu));
+      encoded_length = 2u;
+   }
+   else if (codepoint <= 0xFFFFu)
+   {
+      encoded[0] = (uint8_t)(0xE0u | (codepoint >> 12u));
+      encoded[1] = (uint8_t)(0x80u | ((codepoint >> 6u) & 0x3Fu));
+      encoded[2] = (uint8_t)(0x80u | (codepoint & 0x3Fu));
+      encoded_length = 3u;
+   }
+   else
+   {
+      encoded[0] = (uint8_t)(0xF0u | (codepoint >> 18u));
+      encoded[1] = (uint8_t)(0x80u | ((codepoint >> 12u) & 0x3Fu));
+      encoded[2] = (uint8_t)(0x80u | ((codepoint >> 6u) & 0x3Fu));
+      encoded[3] = (uint8_t)(0x80u | (codepoint & 0x3Fu));
+      encoded_length = 4u;
+   }
+
+   if ((*length + encoded_length) >= dst_size)
+   {
+      return false;
+   }
+   memcpy(&dst[*length], encoded, encoded_length);
+   *length += encoded_length;
+   return true;
+}
+
+static bool m_json_parse_string(const char **cursor, char *dst, const size_t dst_size)
+{
+   size_t length = 0u;
+   if ((**cursor) != '"')
+   {
+      return false;
+   }
+   (*cursor)++;
+
+   while (**cursor != '\0')
+   {
+      uint32_t codepoint;
+      const uint8_t c = (uint8_t)*(*cursor)++;
+      if (c == '"')
+      {
+         dst[length] = '\0';
+         return true;
+      }
+      if (c == '\\')
+      {
+         const char escaped = *(*cursor)++;
+         switch (escaped)
+         {
+            case '"': codepoint = '"'; break;
+            case '\\': codepoint = '\\'; break;
+            case '/': codepoint = '/'; break;
+            case 'b': codepoint = '\b'; break;
+            case 'f': codepoint = '\f'; break;
+            case 'n': codepoint = '\n'; break;
+            case 'r': codepoint = '\r'; break;
+            case 't': codepoint = '\t'; break;
+            case 'u':
+            {
+               uint32_t low;
+               if (!m_json_read_hex4(cursor, &codepoint))
+               {
+                  return false;
+               }
+               if ((codepoint >= 0xD800u) && (codepoint <= 0xDBFFu))
+               {
+                  if ((**cursor != '\\') || ((*cursor)[1] != 'u'))
+                  {
+                     return false;
+                  }
+                  *cursor += 2;
+                  if (!m_json_read_hex4(cursor, &low) || (low < 0xDC00u) || (low > 0xDFFFu))
+                  {
+                     return false;
+                  }
+                  codepoint = 0x10000u + (((codepoint - 0xD800u) << 10u) | (low - 0xDC00u));
+               }
+               else if ((codepoint >= 0xDC00u) && (codepoint <= 0xDFFFu))
+               {
+                  return false;
+               }
+               break;
+            }
+            default:
+               return false;
+         }
+      }
+      else
+      {
+         if (c < 0x20u)
+         {
+            return false;
+         }
+         if (c >= 0x80u)
+         {
+            if ((length + 1u) >= dst_size)
+            {
+               return false;
+            }
+            dst[length++] = (char)c;
+            continue;
+         }
+         codepoint = c;
+      }
+      if (!m_json_append_codepoint(dst, dst_size, &length, codepoint))
+      {
+         return false;
+      }
+   }
+   return false;
 }
 
 /**
@@ -477,6 +654,221 @@ static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req)
    return ESP_OK;
 }
 
+static esp_err_t m_get_handler_wifi_config(httpd_req_t *req)
+{
+   T_device_data device_data;
+   char hostname[DEVICE_HOST_NAME_MAX * 6u + 1u];
+   char ssid[WIFI_SSID_MAX * 6u + 1u];
+   char bssid[18u] = "";
+   char response[512u];
+   int ret;
+
+   device_data_get(&device_data);
+   m_escape_wifi_ssid((const uint8_t *)device_data.ac_HostName,
+                      strlen(device_data.ac_HostName),
+                      hostname,
+                      sizeof(hostname));
+   m_escape_wifi_ssid((const uint8_t *)device_data.ac_WiFiSSID,
+                      strlen(device_data.ac_WiFiSSID),
+                      ssid,
+                      sizeof(ssid));
+   if (device_data_not_zero(device_data.au8_BSSID, WIFI_BSSID_SIZE))
+   {
+      ret = snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
+                     (unsigned int)device_data.au8_BSSID[0],
+                     (unsigned int)device_data.au8_BSSID[1],
+                     (unsigned int)device_data.au8_BSSID[2],
+                     (unsigned int)device_data.au8_BSSID[3],
+                     (unsigned int)device_data.au8_BSSID[4],
+                     (unsigned int)device_data.au8_BSSID[5]);
+      if ((ret <= 0) || ((size_t)ret >= sizeof(bssid)))
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+   }
+
+   ret = snprintf(response,
+                  sizeof(response),
+                  "{\"hostname\":\"%s\",\"ssid\":\"%s\",\"bssid\":\"%s\","
+                  "\"passwordSet\":%s,\"openNetwork\":%s,"
+                  "\"limits\":{\"hostname\":%u,\"ssid\":%u,\"password\":%u}}",
+                  hostname,
+                  ssid,
+                  bssid,
+                  (device_data.ac_WiFiPw[0] != '\0') ? "true" : "false",
+                  (device_data.ac_WiFiPw[0] == '\0') ? "true" : "false",
+                  (unsigned int)DEVICE_HOST_NAME_MAX,
+                  (unsigned int)WIFI_SSID_MAX,
+                  (unsigned int)WIFI_PASSWORD_MAX);
+   if ((ret <= 0) || ((size_t)ret >= sizeof(response)))
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+
+   httpd_resp_set_type(req, "application/json");
+   httpd_resp_send(req, response, (size_t)ret);
+   return ESP_OK;
+}
+
+static bool m_parse_wifi_config_json(const char *json,
+                                     char *hostname,
+                                     const size_t hostname_size,
+                                     char *ssid,
+                                     const size_t ssid_size,
+                                     char *bssid,
+                                     const size_t bssid_size,
+                                     char *password,
+                                     const size_t password_size,
+                                     bool *open_network)
+{
+   const char *cursor = json;
+   uint8_t fields = 0u;
+   m_json_skip_whitespace(&cursor);
+   if (*cursor++ != '{')
+   {
+      return false;
+   }
+
+   while (true)
+   {
+      char key[24u];
+      m_json_skip_whitespace(&cursor);
+      if (*cursor == '}')
+      {
+         cursor++;
+         break;
+      }
+      if (!m_json_parse_string(&cursor, key, sizeof(key)))
+      {
+         return false;
+      }
+      m_json_skip_whitespace(&cursor);
+      if (*cursor++ != ':')
+      {
+         return false;
+      }
+      m_json_skip_whitespace(&cursor);
+
+      uint8_t field;
+      if (strcmp(key, "hostname") == 0)
+      {
+         field = 0x01u;
+         if (!m_json_parse_string(&cursor, hostname, hostname_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "ssid") == 0)
+      {
+         field = 0x02u;
+         if (!m_json_parse_string(&cursor, ssid, ssid_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "bssid") == 0)
+      {
+         field = 0x04u;
+         if (!m_json_parse_string(&cursor, bssid, bssid_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "password") == 0)
+      {
+         field = 0x08u;
+         if (!m_json_parse_string(&cursor, password, password_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "openNetwork") == 0)
+      {
+         field = 0x10u;
+         if (strncmp(cursor, "true", 4u) == 0)
+         {
+            *open_network = true;
+            cursor += 4;
+         }
+         else if (strncmp(cursor, "false", 5u) == 0)
+         {
+            *open_network = false;
+            cursor += 5;
+         }
+         else
+         {
+            return false;
+         }
+      }
+      else
+      {
+         return false;
+      }
+
+      if ((fields & field) != 0u)
+      {
+         return false;
+      }
+      fields |= field;
+      m_json_skip_whitespace(&cursor);
+      if (*cursor == ',')
+      {
+         cursor++;
+      }
+      else if (*cursor != '}')
+      {
+         return false;
+      }
+   }
+
+   m_json_skip_whitespace(&cursor);
+   return (fields == 0x1Fu) && (*cursor == '\0');
+}
+
+static int8_t m_wifi_hex_value(const char c)
+{
+   if ((c >= '0') && (c <= '9'))
+   {
+      return (int8_t)(c - '0');
+   }
+   if ((c >= 'a') && (c <= 'f'))
+   {
+      return (int8_t)(c - 'a' + 10);
+   }
+   if ((c >= 'A') && (c <= 'F'))
+   {
+      return (int8_t)(c - 'A' + 10);
+   }
+   return -1;
+}
+
+static bool m_parse_wifi_bssid(const char *text, uint8_t *bssid)
+{
+   if (text[0] == '\0')
+   {
+      memset(bssid, 0, WIFI_BSSID_SIZE);
+      return true;
+   }
+   if (strlen(text) != 17u)
+   {
+      return false;
+   }
+   for (uint8_t i = 0u; i < WIFI_BSSID_SIZE; i++)
+   {
+      const size_t offset = (size_t)i * 3u;
+      const int8_t high = m_wifi_hex_value(text[offset]);
+      const int8_t low = m_wifi_hex_value(text[offset + 1u]);
+      if ((high < 0) || (low < 0) || ((i < WIFI_BSSID_SIZE - 1u) && (text[offset + 2u] != ':')))
+      {
+         return false;
+      }
+      bssid[i] = (uint8_t)(((uint8_t)high << 4u) | (uint8_t)low);
+   }
+   return true;
+}
+
 /**
  * @brief get handler to fetch output data
  *
@@ -738,6 +1130,88 @@ static esp_err_t m_set_handler_system_setup(httpd_req_t *req)
    return ESP_OK;
 }
 
+static esp_err_t m_set_handler_wifi_config(httpd_req_t *req)
+{
+   char body[1024u];
+   char hostname[DEVICE_HOST_NAME_MAX + 1u] = "";
+   char ssid[WIFI_SSID_MAX + 1u] = "";
+   char bssid_text[18u] = "";
+   char password[WIFI_PASSWORD_MAX + 1u] = "";
+   uint8_t bssid[WIFI_BSSID_SIZE];
+   bool open_network = false;
+   size_t received = 0u;
+   T_device_data current_data;
+
+   if ((req->content_len == 0u) || (req->content_len >= sizeof(body)))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid request size");
+      return ESP_ERR_INVALID_SIZE;
+   }
+   while (received < req->content_len)
+   {
+      const int ret = httpd_req_recv(req, &body[received], req->content_len - received);
+      if (ret <= 0)
+      {
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete request body");
+         return ESP_FAIL;
+      }
+      received += (size_t)ret;
+   }
+   body[received] = '\0';
+   device_data_get(&current_data);
+
+   if (!m_parse_wifi_config_json(body,
+                                 hostname, sizeof(hostname),
+                                 ssid, sizeof(ssid),
+                                 bssid_text, sizeof(bssid_text),
+                                 password, sizeof(password),
+                                 &open_network) ||
+       (strnlen(hostname, sizeof(hostname)) == 0u) ||
+       (strnlen(hostname, sizeof(hostname)) > DEVICE_HOST_NAME_MAX) ||
+       (strnlen(ssid, sizeof(ssid)) == 0u) ||
+       (strnlen(ssid, sizeof(ssid)) > WIFI_SSID_MAX) ||
+       (strnlen(password, sizeof(password)) > WIFI_PASSWORD_MAX) ||
+       (open_network && (password[0] != '\0')) ||
+       (!open_network && (password[0] == '\0') &&
+        ((strcmp(ssid, current_data.ac_WiFiSSID) != 0) || (current_data.ac_WiFiPw[0] == '\0'))) ||
+       !m_parse_wifi_bssid(bssid_text, bssid))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid WiFi configuration");
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   esp_err_t err = device_data_set_hostname(hostname);
+   if (err == ESP_OK)
+   {
+      err = device_data_set_ssid(ssid);
+   }
+   if (err == ESP_OK)
+   {
+      err = device_data_set_bssid(bssid);
+   }
+   if ((err == ESP_OK) && (open_network || (password[0] != '\0')))
+   {
+      err = device_data_set_wifipw(password);
+   }
+   if ((err == ESP_OK) && (device_data_store() != ESP_OK))
+   {
+      err = ESP_FAIL;
+   }
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   if (httpd_resp_sendstr(req, "Saved; restarting") != ESP_OK)
+   {
+      return ESP_FAIL;
+   }
+   vTaskDelay(pdMS_TO_TICKS(500));
+   system_sw_reset();
+   return ESP_OK;
+}
+
 static esp_err_t m_post_handler_restart(httpd_req_t *req)
 {
    httpd_resp_sendstr(req, "Restarting");
@@ -778,7 +1252,7 @@ static esp_err_t m_set_handler_mode(httpd_req_t *req)
 void start_webserver(void)
 {
    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-   config.max_uri_handlers = 14;
+   config.max_uri_handlers = 16;
    config.stack_size = 8192;
 
    httpd_start(&server, &config);
@@ -791,10 +1265,12 @@ void start_webserver(void)
    httpd_uri_t get_output_setup_data = {.uri="/api/output_setup", .method=HTTP_GET, .handler=m_get_handler_output_setup};
    httpd_uri_t get_system_setup_data = {.uri="/api/system_setup", .method=HTTP_GET, .handler=m_get_handler_system_setup};
    httpd_uri_t get_wifi_scan = {.uri="/api/wifi_scan", .method=HTTP_GET, .handler=m_get_handler_wifi_scan};
+   httpd_uri_t get_wifi_config = {.uri="/api/wifi_config", .method=HTTP_GET, .handler=m_get_handler_wifi_config};
    httpd_uri_t set_output_uri = {.uri="/set_output", .method=HTTP_POST, .handler=m_set_handler_output, .user_ctx=NULL};
    httpd_uri_t set_sensor_setup_uri = {.uri="/set_sensor_setup", .method=HTTP_POST, .handler=m_set_handler_sensor_setup, .user_ctx=NULL};
    httpd_uri_t set_output_setup_uri = {.uri="/set_output_setup", .method=HTTP_POST, .handler=m_set_handler_output_setup, .user_ctx=NULL};
    httpd_uri_t set_system_setup_uri = {.uri="/set_system_setup", .method=HTTP_POST, .handler=m_set_handler_system_setup, .user_ctx=NULL};
+   httpd_uri_t set_wifi_config_uri = {.uri="/set_wifi_config", .method=HTTP_POST, .handler=m_set_handler_wifi_config, .user_ctx=NULL};
    httpd_uri_t restart_uri = {.uri="/restart", .method=HTTP_POST, .handler=m_post_handler_restart, .user_ctx=NULL};
    httpd_uri_t set_mode_uri = {.uri="/set_mode", .method=HTTP_POST, .handler=m_set_handler_mode, .user_ctx=NULL};
 
@@ -806,10 +1282,12 @@ void start_webserver(void)
    httpd_register_uri_handler(server, &get_output_setup_data);
    httpd_register_uri_handler(server, &get_system_setup_data);
    httpd_register_uri_handler(server, &get_wifi_scan);
+   httpd_register_uri_handler(server, &get_wifi_config);
    httpd_register_uri_handler(server, &set_output_uri);
    httpd_register_uri_handler(server, &set_sensor_setup_uri);
    httpd_register_uri_handler(server, &set_output_setup_uri);
    httpd_register_uri_handler(server, &set_system_setup_uri);
+   httpd_register_uri_handler(server, &set_wifi_config_uri);
    httpd_register_uri_handler(server, &restart_uri);
    httpd_register_uri_handler(server, &set_mode_uri);
 }
