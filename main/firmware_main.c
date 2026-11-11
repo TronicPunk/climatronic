@@ -104,8 +104,6 @@ void app_main(void)
    io_init();           // init IO
    io_set_led_off();    // disable status LEDs
 
-   ESP_LOGI(TAG, "Sensor supply = %u mV\r\n", io_get_sensor_supply_voltage());
-
    iic_init();          // init the IIC interface
    iic_mux_init();      // init the IIC multiplexer
    iic_eeprom_init();   // init the IIC eeprom
@@ -122,10 +120,9 @@ void app_main(void)
 
    // init the web interface
    wifi_connect(&t_DeviceData);
-/*
    start_mdns_service(t_DeviceData.ac_HostName);
    start_webserver();
-*/
+
    err = system_data_load();
    if (err == ESP_FAIL)
    {

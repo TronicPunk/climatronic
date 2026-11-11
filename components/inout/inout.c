@@ -93,7 +93,7 @@ esp_err_t io_init(void)
       // enable sensor supply voltage
       io_set_sensor_supply_state(1u);
 
-      // wait for sensor supply rampup. this takes about 5ms
+      // wait for sensor supply rampup. this will take about 5ms
       do
       {
          u32_SupplyMv = io_get_sensor_supply_voltage();
