@@ -193,7 +193,6 @@
    <div class="wifi-config">
       <label for="wifiHostname">Host-Name</label>
       <input id="wifiHostname" class="config-input" type="text" maxlength="25" required>
-      <span class="wifi-help">Maximal 25 Zeichen.</span>
 
       <label for="wifiApSelect">Verfügbare Access Points</label>
       <div>
@@ -205,7 +204,6 @@
 
       <label for="wifiSsid">WIFI SSID</label>
       <input id="wifiSsid" class="config-input" type="text" maxlength="32" required>
-      <span class="wifi-help">Maximal 32 Zeichen.</span>
 
       <label for="wifiBssid">WIFI BSSID</label>
       <input id="wifiBssid" class="config-input" type="text" maxlength="17"
@@ -221,10 +219,9 @@
 
       <span>Netzwerksicherheit</span>
       <label><input id="wifiOpenNetwork" type="checkbox"> Offenes WLAN (gespeichertes Passwort löschen)</label>
-      <span class="wifi-help">Für ein WLAN ohne Passwort aktivieren.</span>
    </div>
    <div class="setup-actions">
-      <button id="saveWifiConfigBtn" type="button" class="save-btn">Speichern</button>
+      <button id="saveWifiConfigBtn" type="button" class="save-btn">Speichern + Neustart</button>
    </div>
    <p id="wifiConfigMessage" role="status"></p>
 </section>
