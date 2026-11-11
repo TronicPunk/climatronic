@@ -17,9 +17,6 @@
 #include <string.h>
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
-#define WIFI_SSID                   "<tbd>"
-#define WIFI_PASS                   "<tbd>"
-#define WIFI_HOST_NAME              "clima_control"
 
 #define WIFI_CONNECTED_BIT          BIT0
 #define WIFI_RECONNECT_TIME_US      5000000ULL     // reconnect retry time delay in micro seconds
@@ -149,7 +146,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
    }
 }
 
-void wifi_connect(void)
+void wifi_connect(T_device_data * const opt_DeviceData)
 {
    // create WIFI event group
    wifi_event_group = xEventGroupCreate();
@@ -184,10 +181,17 @@ void wifi_connect(void)
                                                        &wifi_event_handler,
                                                        NULL,
                                                        &instance_got_ip));
-   wifi_config_t wifi_config =
+   wifi_config_t wifi_config = { 0 };
+   strncpy((char *)wifi_config.sta.ssid, opt_DeviceData->ac_WiFiSSID, sizeof(wifi_config.sta.ssid));
+   wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid)-1u] = 0u;
+   strncpy((char *)wifi_config.sta.password, opt_DeviceData->ac_WiFiPw, sizeof(wifi_config.sta.password));
+   wifi_config.sta.password[sizeof(wifi_config.sta.password)-1u] = 0u;
+   if (device_data_not_zero(opt_DeviceData->au8_BSSID, WIFI_BSSID_SIZE))
    {
-      .sta = { .ssid = WIFI_SSID, .password = WIFI_PASS }
-   };
+      wifi_config.sta.bssid_set = true;
+      memcpy(wifi_config.sta.bssid, opt_DeviceData->au8_BSSID, WIFI_BSSID_SIZE);
+   }
+
    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
@@ -210,10 +214,10 @@ void wifi_reset(void)
    wifi_event_group = NULL;
 }
 
-void start_mdns_service(void)
+void start_mdns_service(const char* const oac_HostName)
 {
     mdns_init();
-    mdns_hostname_set(WIFI_HOST_NAME);         // Hostname: <host_name>.local
+    mdns_hostname_set(oac_HostName);      // Hostname: <host_name>.local
     mdns_instance_name_set("ESP32 Web");
 
     // Optional: Dienst registrieren

@@ -14,7 +14,7 @@
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 
 #define NVM_DATA_DEVICE_ADDR        0u          // start address of device data set
-#define NVM_DATA_DEVICE_SIZE        128u        // size of device data set
+#define NVM_DATA_DEVICE_SIZE        160u        // size of device data set
 #define NVM_DATA_OUT_ADDR           256u        // start address of output data sets
 #define NVM_DATA_OUT_SIZE           32u         // size of output data set (per output channel, 8 channels available)
 #define NVM_DATA_SENSOR_ADDR        512u        // start address of sensor data sets

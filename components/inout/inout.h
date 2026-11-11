@@ -18,6 +18,7 @@
 #define STATUS_LED_WLAN          1u             // index WLAN LED
 #define STATUS_LED_CPU           2u             // index CPU LED
 #define STATUS_LED_COUNT         3u             // number of LEDs
+
 #define STATUS_LED_RED_MSK       0x00FF0000uL   // red color mask
 #define STATUS_LED_RED_BITPOS    16u            // red color bit position
 #define STATUS_LED_GREEN_MSK     0x0000FF00uL   // green color mask

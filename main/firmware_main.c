@@ -21,6 +21,7 @@
 #include "iic.h"
 #include "iic_mux.h"
 #include "iic_eeprom.h"
+#include "device_data.h"
 #include "system_data.h"
 #include "sensor.h"
 #include "output.h"
@@ -93,27 +94,38 @@ static void m_menu_main(void)
 void app_main(void)
 {
    esp_err_t err;
+   T_device_data t_DeviceData;
 
    // force linkage of sensor components
    __force_link_bme280();
    __force_link_bme68x();
    __force_link_scd4x();
 
-   io_init();        // init IO
-   io_set_led_off();
+   io_init();           // init IO
+   io_set_led_off();    // disable status LEDs
 
-   ESP_ERROR_CHECK(nvs_flash_init());
-   serial_init();
-
-   // init the web interface
-   wifi_connect();
-   start_mdns_service();
-   start_webserver();
+   ESP_LOGI(TAG, "Sensor supply = %u mV\r\n", io_get_sensor_supply_voltage());
 
    iic_init();          // init the IIC interface
    iic_mux_init();      // init the IIC multiplexer
    iic_eeprom_init();   // init the IIC eeprom
 
+   ESP_ERROR_CHECK(nvs_flash_init());
+   serial_init();
+
+   err = device_data_load();
+   if (err == ESP_FAIL)
+   {
+      ESP_LOGI(TAG, "device_data error %d\r\n", err);
+   }
+   device_data_get(&t_DeviceData);
+
+   // init the web interface
+   wifi_connect(&t_DeviceData);
+/*
+   start_mdns_service(t_DeviceData.ac_HostName);
+   start_webserver();
+*/
    err = system_data_load();
    if (err == ESP_FAIL)
    {

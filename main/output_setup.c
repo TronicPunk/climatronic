@@ -136,7 +136,7 @@ static void m_output_test_print_channel(const uint32_t ou32_Channel, const uint8
 {
    int32_t s32_Pwm;
    static const char* as_EditFlag[2] = { "   " , " * " };
-   static const char* as_OutType[4] = { "INVALID" , "DIGITAL", "PWM 2K ", "PWM-AC " };
+   static const char* as_OutType[4] = { "INVALID " , "DIGITAL ", "PWM 2KHz", "PWM-AC  " };
    T_out_channel_data t_OutSetup;
    const uint8_t u8_FlagIdx = (ou8_EditFlag >= 1u) ? 1u : 0u;
    output_get_setup(ou32_Channel, &t_OutSetup);
@@ -289,7 +289,7 @@ static int32_t m_output_setup(void)
 
 static void m_output_setup_print_channel(const uint32_t ou32_Channel, const T_out_channel_data * const opt_OutSetup)
 {
-   static const char* as_OutType[4] = { "INVALID" , "DIGITAL", "PWM 2K ", "PWM-AC " };
+   static const char* as_OutType[4] = { "INVALID " , "DIGITAL ", "PWM 2KHz", "PWM-AC  " };
    char ac_OutName[OUTPUT_NAME_LEN_MAX+1];
    const uint32_t u32_NameLen = strlen(opt_OutSetup->ac_OutName);
    const uint32_t u32_RemainingSpace = OUTPUT_NAME_LEN_MAX - u32_NameLen;

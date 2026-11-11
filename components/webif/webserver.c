@@ -524,7 +524,7 @@ static esp_err_t m_set_handler_system_setup(httpd_req_t *req)
    }
    buf[ret] = '\0';
 
-   int ai_Frequency[I2C_BUS_COUNT];
+   uint8_t au8_Frequency[I2C_BUS_COUNT];
    char *pc_Frequency = strstr(buf, "\"frequencies\":[");
    if (pc_Frequency == NULL)
    {
@@ -543,7 +543,7 @@ static esp_err_t m_set_handler_system_setup(httpd_req_t *req)
          httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
          return ESP_ERR_INVALID_ARG;
       }
-      ai_Frequency[u32_Bus] = (int)s32_Frequency;
+      au8_Frequency[u32_Bus] = (uint8_t)s32_Frequency;
       pc_Frequency = pc_End;
       if ((u32_Bus + 1u < I2C_BUS_COUNT) && (*pc_Frequency++ != ','))
       {
@@ -559,7 +559,7 @@ static esp_err_t m_set_handler_system_setup(httpd_req_t *req)
 
    for (uint32_t u32_Bus = 0u; u32_Bus < I2C_BUS_COUNT; u32_Bus++)
    {
-      const esp_err_t err = system_data_set_i2c_freq(u32_Bus, (uint8_t)ai_Frequency[u32_Bus]);
+      const esp_err_t err = system_data_set_i2c_freq(u32_Bus, (uint8_t)au8_Frequency[u32_Bus]);
       if (err != ESP_OK)
       {
          httpd_resp_send_500(req);

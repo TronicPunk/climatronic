@@ -7,7 +7,8 @@ idf_component_register(
    PRIV_REQUIRES
       iic_eeprom
       nvm_data
-      inout
+      device_data
       nvs_flash
+      inout
       webif
 )

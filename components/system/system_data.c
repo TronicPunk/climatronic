@@ -18,7 +18,6 @@ typedef struct
    uint8_t au8_Reserved[22];              // reserved NVM system data
 } T_system_data;
 
-// device data set
 typedef struct
 {
    uint32_t u32_CRC32;           // CRC32
