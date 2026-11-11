@@ -8,4 +8,12 @@ menu "Example Configuration"
        string "WiFi Password"
        default "mypassword"
 
+   config SETUP_AP_SSID
+       string "Setup access point SSID"
+       default "Climatronic-Setup"
+
+   config SETUP_AP_PASSWORD
+       string "Setup access point password (at least 8 characters)"
+       default "clima-setup"
+
 endmenu

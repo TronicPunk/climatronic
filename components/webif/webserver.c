@@ -8,9 +8,11 @@
 #include "webserver.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
+#include "esp_wifi.h"
 #include "sensor_api.h"
 #include "output.h"
 #include "system_data.h"
+#include "device_data.h"
 #include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -28,6 +30,7 @@ extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 #define OUTPUT_MODE_OFF       (0x00u)     // all outputs are off
 #define OUTPUT_MODE_MANUAL    (0x01u)     // manual output control enabled
 #define OUTPUT_MODE_AUTO      (0x02u)     // output controlled by software
+#define WIFI_SCAN_RESULT_MAX  10u
 
 /* --- Module globals ------------------------------------------------------ */
 static httpd_handle_t server = NULL;
@@ -46,12 +49,14 @@ static esp_err_t m_get_handler_output(httpd_req_t *req);
 static esp_err_t m_get_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_system_setup(httpd_req_t *req);
+static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req);
 static esp_err_t m_set_handler_output(httpd_req_t *req);
 static esp_err_t m_set_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_post_handler_restart(httpd_req_t *req);
 static esp_err_t m_set_handler_mode(httpd_req_t *req);
+static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, char *dst, const size_t dst_size);
 
 /* --- Implementation ------------------------------------------------------ */
 
@@ -128,6 +133,53 @@ static void m_escape_json_string(const char * src, char * const dst, const size_
    {
       dst[0] = '\0';
    }
+}
+
+static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, char *dst, const size_t dst_size)
+{
+   static const char hex[] = "0123456789ABCDEF";
+   size_t idx = 0u;
+
+   for (size_t i = 0u; i < ssid_len; i++)
+   {
+      const uint8_t c = ssid[i];
+      if ((c == '"') || (c == '\\'))
+      {
+         if (idx + 2u >= dst_size)
+         {
+            break;
+         }
+         dst[idx++] = '\\';
+         dst[idx++] = (char)c;
+      }
+      else if ((c < 0x20u) || (c == 0x7Fu))
+      {
+         if (idx + 6u >= dst_size)
+         {
+            break;
+         }
+         dst[idx++] = '\\';
+         dst[idx++] = 'u';
+         dst[idx++] = '0';
+         dst[idx++] = '0';
+         dst[idx++] = hex[c >> 4u];
+         dst[idx++] = hex[c & 0x0Fu];
+      }
+      else
+      {
+         if (idx + 1u >= dst_size)
+         {
+            break;
+         }
+         dst[idx++] = (char)c;
+      }
+   }
+
+   if (dst_size > 0u)
+   {
+      dst[idx] = '\0';
+   }
+   return idx;
 }
 
 /**
@@ -314,6 +366,114 @@ static esp_err_t m_get_handler_system_setup(httpd_req_t *req)
 
    httpd_resp_set_type(req, "application/json");
    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+   return ESP_OK;
+}
+
+static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req)
+{
+   wifi_mode_t mode;
+   esp_err_t err = esp_wifi_get_mode(&mode);
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+   if ((mode != WIFI_MODE_STA) && (mode != WIFI_MODE_APSTA))
+   {
+      httpd_resp_set_status(req, "409 Conflict");
+      httpd_resp_sendstr(req, "WiFi scan requires station or AP+station mode");
+      return ESP_FAIL;
+   }
+
+   err = esp_wifi_scan_start(NULL, true);
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   uint16_t scan_count = 0u;
+   err = esp_wifi_scan_get_ap_num(&scan_count);
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+   uint16_t ap_count = (scan_count > WIFI_SCAN_RESULT_MAX) ? WIFI_SCAN_RESULT_MAX : scan_count;
+
+   wifi_ap_record_t ap_records[WIFI_SCAN_RESULT_MAX];
+   if (ap_count > 0u)
+   {
+      err = esp_wifi_scan_get_ap_records(&ap_count, ap_records);
+      if (err != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return err;
+      }
+
+      for (uint16_t i = 0u; i < ap_count; i++)
+      {
+         for (uint16_t j = (uint16_t)(i + 1u); j < ap_count; j++)
+         {
+            if (ap_records[j].rssi > ap_records[i].rssi)
+            {
+               const wifi_ap_record_t tmp = ap_records[i];
+               ap_records[i] = ap_records[j];
+               ap_records[j] = tmp;
+            }
+         }
+      }
+   }
+
+   if (scan_count > ap_count)
+   {
+      err = esp_wifi_clear_ap_list();
+      if (err != ESP_OK)
+      {
+         httpd_resp_send_500(req);
+         return err;
+      }
+   }
+
+   httpd_resp_set_type(req, "application/json");
+   if (httpd_resp_sendstr_chunk(req, "{\"aps\":[") != ESP_OK)
+   {
+      return ESP_FAIL;
+   }
+
+   for (uint16_t i = 0u; i < ap_count; i++)
+   {
+      char escaped_ssid[WIFI_SSID_MAX * 6u + 1u];
+      char item[320];
+      const size_t ssid_len = strnlen((const char *)ap_records[i].ssid, WIFI_SSID_MAX);
+      m_escape_wifi_ssid(ap_records[i].ssid, ssid_len, escaped_ssid, sizeof(escaped_ssid));
+      const int ret = snprintf(item,
+                               sizeof(item),
+                               "%s{\"ssid\":\"%s\",\"bssid\":\"%02X:%02X:%02X:%02X:%02X:%02X\","
+                               "\"rssi\":%d,\"channel\":%u,\"auth\":%u}",
+                               (i == 0u) ? "" : ",",
+                               escaped_ssid,
+                               (unsigned int)ap_records[i].bssid[0],
+                               (unsigned int)ap_records[i].bssid[1],
+                               (unsigned int)ap_records[i].bssid[2],
+                               (unsigned int)ap_records[i].bssid[3],
+                               (unsigned int)ap_records[i].bssid[4],
+                               (unsigned int)ap_records[i].bssid[5],
+                               ap_records[i].rssi,
+                               (unsigned int)ap_records[i].primary,
+                               (unsigned int)ap_records[i].authmode);
+      if ((ret <= 0) || ((size_t)ret >= sizeof(item)) ||
+          (httpd_resp_sendstr_chunk(req, item) != ESP_OK))
+      {
+         return ESP_FAIL;
+      }
+   }
+
+   if ((httpd_resp_sendstr_chunk(req, "]}") != ESP_OK) ||
+       (httpd_resp_sendstr_chunk(req, "") != ESP_OK))
+   {
+      return ESP_FAIL;
+   }
    return ESP_OK;
 }
 
@@ -630,6 +790,7 @@ void start_webserver(void)
    httpd_uri_t get_sensor_setup_data = {.uri="/api/sensor_setup", .method=HTTP_GET, .handler=m_get_handler_sensor_setup};
    httpd_uri_t get_output_setup_data = {.uri="/api/output_setup", .method=HTTP_GET, .handler=m_get_handler_output_setup};
    httpd_uri_t get_system_setup_data = {.uri="/api/system_setup", .method=HTTP_GET, .handler=m_get_handler_system_setup};
+   httpd_uri_t get_wifi_scan = {.uri="/api/wifi_scan", .method=HTTP_GET, .handler=m_get_handler_wifi_scan};
    httpd_uri_t set_output_uri = {.uri="/set_output", .method=HTTP_POST, .handler=m_set_handler_output, .user_ctx=NULL};
    httpd_uri_t set_sensor_setup_uri = {.uri="/set_sensor_setup", .method=HTTP_POST, .handler=m_set_handler_sensor_setup, .user_ctx=NULL};
    httpd_uri_t set_output_setup_uri = {.uri="/set_output_setup", .method=HTTP_POST, .handler=m_set_handler_output_setup, .user_ctx=NULL};
@@ -644,6 +805,7 @@ void start_webserver(void)
    httpd_register_uri_handler(server, &get_output_data);
    httpd_register_uri_handler(server, &get_output_setup_data);
    httpd_register_uri_handler(server, &get_system_setup_data);
+   httpd_register_uri_handler(server, &get_wifi_scan);
    httpd_register_uri_handler(server, &set_output_uri);
    httpd_register_uri_handler(server, &set_sensor_setup_uri);
    httpd_register_uri_handler(server, &set_output_setup_uri);

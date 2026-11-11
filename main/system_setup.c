@@ -192,6 +192,7 @@ static int32_t m_set_led(void)
 static int32_t m_wifi_setup(void)
 {
    T_device_data t_DeviceData;
+   static const uint8_t au8_BSSID_Zero[WIFI_BSSID_SIZE] = { 0 };
    char ac_String[64u];
    char ac_BSSID[18u];
    esp_err_t t_Err;
@@ -210,13 +211,13 @@ static int32_t m_wifi_setup(void)
       printf(" WIFI setup (NVM data)\r\n");
       printf("------------------------------------------\r\n\n");
       printf(" [1] edit hostname    %s\r\n", t_DeviceData.ac_HostName);
-      printf("     WIFI SSID        %s\r\n", t_DeviceData.ac_WiFiSSID);
-      printf("     WIFI BSSID       %s\r\n", ac_BSSID);
-      printf(" [2] set  WIFI PW     ********\r\n");
-      printf(" [3] scan WIFI APs for SSID\r\n\n");
+      printf(" [2] edit WIFI SSID   %s\r\n", t_DeviceData.ac_WiFiSSID);
+      printf(" [3] clear WIFI BSSID %s\r\n", ac_BSSID);
+      printf(" [4] set  WIFI PW     ********\r\n");
+      printf(" [5] scan WIFI APs for SSID\r\n\n");
       printf("[ESC] terminate setup\r\n\n");
 
-      while (!((u8_Key == 0x1Bu) || ((u8_Key >= '1') && (u8_Key <= '3'))))
+      while (!((u8_Key == 0x1Bu) || ((u8_Key >= '1') && (u8_Key <= '5'))))
       {
          wifi_ap_record_t ap_info;
          memset(&ap_info, 0, sizeof(ap_info));
@@ -246,6 +247,20 @@ static int32_t m_wifi_setup(void)
       }
       if (u8_Key == '2')
       {
+         t_Err = m_edit_string(ac_String, WIFI_SSID_MAX, 23u, 6u);
+         if (t_Err == ESP_OK)
+         {
+            device_data_set_ssid(ac_String);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '3')
+      {
+         device_data_set_bssid(au8_BSSID_Zero);
+         q_SetupModified = true;
+      }
+      if (u8_Key == '4')
+      {
          t_Err = m_edit_string(ac_String, WIFI_PASSWORD_MAX, 23u, 8u);
          if (t_Err == ESP_OK)
          {
@@ -253,7 +268,7 @@ static int32_t m_wifi_setup(void)
             q_SetupModified = true;
          }
       }
-      if (u8_Key == '3')
+      if (u8_Key == '5')
       {
          uint8_t au8_BSSID[WIFI_BSSID_SIZE];
          t_Err = m_wifi_scan_aps(ac_String, au8_BSSID);

@@ -436,6 +436,8 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 CONFIG_WIFI_SSID="myssid"
 CONFIG_WIFI_PASSWORD="mypassword"
+CONFIG_SETUP_AP_SSID="Climatronic-Setup"
+CONFIG_SETUP_AP_PASSWORD="clima-setup"
 # end of Example Configuration
 
 #

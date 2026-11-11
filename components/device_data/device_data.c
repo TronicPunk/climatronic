@@ -145,7 +145,7 @@ esp_err_t device_data_set_ssid(const char * const oac_SSID)
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
    const uint32_t u32_SSIDLen = strnlen(oac_SSID, WIFI_SSID_MAX + 1u);
 
-   if ((u32_SSIDLen > 0u) && (u32_SSIDLen <= WIFI_SSID_MAX))
+   if (u32_SSIDLen <= WIFI_SSID_MAX)
    {
       T_device_data_nvm * pt_DeviceData = &mt_DeviceDataCrc.t_DeviceData;
       if (strncmp(pt_DeviceData->ac_WiFiSSID, oac_SSID, WIFI_SSID_MAX) != 0)
