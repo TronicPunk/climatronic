@@ -102,19 +102,19 @@ static int32_t m_output_test(void)
       }
       if (u8_Key == '-')
       {
-         output_get_pwm(u32_EditChannel, &s32_Pwm);
+         output_get_value(u32_EditChannel, &s32_Pwm);
          s32_Pwm = (s32_Pwm >= PWM_STEP) ? (s32_Pwm - PWM_STEP) : OUTPUT_PWM_MAX;
-         output_set_pwm(u32_EditChannel, s32_Pwm);
+         output_set_value(u32_EditChannel, s32_Pwm);
       }
       if (u8_Key == '+')
       {
-         output_get_pwm(u32_EditChannel, &s32_Pwm);
+         output_get_value(u32_EditChannel, &s32_Pwm);
          s32_Pwm += PWM_STEP;
          if (s32_Pwm > OUTPUT_PWM_MAX)
          {
             s32_Pwm = 0;
          }
-         output_set_pwm(u32_EditChannel, s32_Pwm);
+         output_set_value(u32_EditChannel, s32_Pwm);
       }
       if (u8_Key == '5')
       {
@@ -144,9 +144,9 @@ static void m_output_test_print_channel(const uint32_t ou32_Channel, const uint8
    const uint8_t u8_Rd = ((t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_RD) != 0u);
    const uint8_t u8_Wr = ((t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u);
 
-   output_get_pwm(ou32_Channel, &s32_Pwm);
+   output_get_value(ou32_Channel, &s32_Pwm);
    set_cursor(0u, ou32_Channel + 5u);
-   printf("%sOUTPUT%lu = %4ld %% [type = %s, def = %4u, name = %s, rd = %1u, wr = %1u]\r\n", as_EditFlag[u8_FlagIdx], ou32_Channel+1u,
+   printf("%sOUTPUT%lu = %4ld %% [type = %s, fix = %4u, name = %s, rd = %1u, wr = %1u]\r\n", as_EditFlag[u8_FlagIdx], ou32_Channel+1u,
           (s32_Pwm + 5)/10, as_OutType[u8_OutType], t_OutSetup.u16_OutValueDef, t_OutSetup.ac_OutName, u8_Rd, u8_Wr);
 }
 
@@ -155,7 +155,7 @@ static void m_output_test_disable_all(const uint32_t ou32_EditChannel)
    for (uint32_t u32_Channel = 0u; u32_Channel < OUTPUT_NUM_CHANNEL_MAX; u32_Channel++)
    {
       uint8_t u8_EditFlag = (u32_Channel == ou32_EditChannel) ? 1u : 0u;
-      output_set_pwm(u32_Channel, 0);
+      output_set_value(u32_Channel, 0);
       m_output_test_print_channel(u32_Channel, u8_EditFlag);
    }
 }
@@ -291,16 +291,11 @@ static void m_output_setup_print_channel(const uint32_t ou32_Channel, const T_ou
 {
    static const char* as_OutType[4] = { "INVALID " , "DIGITAL ", "PWM 2KHz", "PWM-AC  " };
    char ac_OutName[OUTPUT_NAME_LEN_MAX+1];
-   const uint32_t u32_NameLen = strlen(opt_OutSetup->ac_OutName);
-   const uint32_t u32_RemainingSpace = OUTPUT_NAME_LEN_MAX - u32_NameLen;
-   strcpy(ac_OutName, opt_OutSetup->ac_OutName);
-   if (u32_RemainingSpace > 0u)
-   {
-      memset(&ac_OutName[u32_NameLen], ' ', u32_RemainingSpace);
-      ac_OutName[OUTPUT_NAME_LEN_MAX] = 0;
-   }
+   const uint8_t u8_OutType = opt_OutSetup->u8_OutType & OUTPUT_TYPE_MASK;
+   strncpy(ac_OutName, opt_OutSetup->ac_OutName, OUTPUT_NAME_LEN_MAX);
+   ac_OutName[OUTPUT_NAME_LEN_MAX] = 0;
 
    set_cursor(0u, 14u);
-   printf("OUTPUT%lu type = %s, def value = %4u, name = %s", ou32_Channel+1u, as_OutType[opt_OutSetup->u8_OutType],
+   printf("OUTPUT%lu type = %s, def value = %4u, name = %s", ou32_Channel+1u, as_OutType[u8_OutType],
           opt_OutSetup->u16_OutValueDef, ac_OutName);
 }

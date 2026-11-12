@@ -7,6 +7,7 @@ idf_component_register(
    PRIV_REQUIRES
       nvm_data
       iic_eeprom
+      inout
       esp_driver_gpio
       esp_driver_ledc
       esp_timer

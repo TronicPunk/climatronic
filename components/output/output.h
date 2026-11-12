@@ -40,6 +40,9 @@ esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data
 /**
  * @brief Set output PWM value
  *
+ *        The PWM value is ignored by the output task when
+ *        output mode is OUTPUT_OFF or OUTPUT_FIX or the output is not writeable
+ *
  * @param ou32_Channel  output channel, range: [0 .. OUT_NUM_CHANNEL_MAX-1]
  * @param os32_OutPwm   output PWM value, range [OUT_PWM_MIN .. OUT_PWM_MAX]
  * @return esp_err_t
@@ -47,7 +50,7 @@ esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data
  *  - ESP_ERR_INVALIG_ARG: ou32_Channel or os32_OutPwm out of range
  *  - Others: Fail
  */
-esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm);
+esp_err_t output_set_value(const uint32_t ou32_Channel, const int32_t os32_OutPwm);
 
 /**
  * @brief Get output PWM value
@@ -59,6 +62,6 @@ esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
  *  - ESP_ERR_INVALIG_ARG: ou32_Channel out of range
  *  - Others: Fail
  */
-esp_err_t output_get_pwm(const uint32_t ou32_Channel, int32_t * const ops32_OutPwm);
+esp_err_t output_get_value(const uint32_t ou32_Channel, int32_t * const ops32_OutPwm);
 
 #endif // OUTPUT_H

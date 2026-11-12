@@ -8,6 +8,7 @@ idf_component_register(
       iic_eeprom
       nvm_data
       system
+      inout
       BME280
       BME68x
       SCD4x

@@ -892,7 +892,7 @@ static esp_err_t m_get_handler_output(httpd_req_t *req)
       {
          int32_t s32_Pwm;
 
-         output_get_pwm(u32_Channel, &s32_Pwm);
+         output_get_value(u32_Channel, &s32_Pwm);
          s32_Pwm = (s32_Pwm + 5)/10;
          ret = snprintf(&resp[idx], (sizeof(resp)-idx), "%ld,", s32_Pwm);
          if (ret > 0)
@@ -979,7 +979,7 @@ static esp_err_t m_set_handler_output(httpd_req_t *req)
 
    if ((ret == 2) && (channel >= 0) && (channel <= OUTPUT_NUM_CHANNEL_MAX))
    {
-      output_set_pwm(channel, pwm * 10);
+      output_set_value(channel, pwm * 10);
    }
 
    httpd_resp_sendstr(req, "OK");

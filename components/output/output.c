@@ -9,11 +9,24 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_timer.h"
+#include "inout.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
+
 
 /* --- Defines ------------------------------------------------------------- */
 
-#define OUTPUT_PWM_AC_RESOLUTION          20u      // AC type PWM resolution in steps of 10ms. Maximum = 32
-#define OUTPUT_PWM_AC_TIMER_INTERVAL_US   10000u   // AC type PWM timer interval in us
+#define OUTPUT_MODE_OFF                   0u             // force all outputs off
+#define OUTPUT_MODE_FIX                   1u             // set outputs with predefined standard values
+#define OUTPUT_MODE_AUTO                  2u             // outputs can be set by controller or remote (webserver, MQTT)
+#define OUTPUT_STATUS_LED_OFF             0x00003232uL   // all outputs off: light blue
+#define OUTPUT_STATUS_LED_FIX             0x00004008uL   // outputs use standard values: green
+#define OUTPUT_STATUS_LED_AUTO            0x005040FFuL   // outputs are in auto mode: light violet
+
+#define OUTPUT_TASK_CYCLE_MS              100uL          // output_task timer interval in ms
+
+#define OUTPUT_PWM_AC_RESOLUTION          20u            // AC type PWM resolution in steps of 10ms. Maximum = 32
+#define OUTPUT_PWM_AC_TIMER_INTERVAL_US   10000u         // AC type PWM timer interval in us
 
 #define OUTPUT_PWM_RESOLUTION             (1u << LEDC_TIMER_10_BIT)  // PWM resolution in digits (10bit)
 #define OUTPUT_PWM_FREQUENZY_HZ           2000u                      // PWM frequency for PWM type outputs
@@ -50,8 +63,10 @@ typedef struct
 typedef struct
 {
    T_out_channel_data t_OutSetup;   /*!< output setup */
-   int32_t s32_OutValue;            /*!< output value */
+   int32_t s32_OutValue;            /*!< current output value */
+   int32_t s32_OutValueRequest;     /*!< requested output value */
    uint32_t u32_PwmAcPattern;       /*!< PWM (AC) pattern */
+   uint8_t u8_OutputTaskLock;       /*!< != 0: output locked for output task */
 } T_output;
 
 
@@ -95,14 +110,20 @@ static const T_output_pwm_def mt_PwmDefs =
    },
 };
 
+static uint8_t mu8_OutputMode = OUTPUT_MODE_OFF;
 static T_output mat_Output[OUTPUT_NUM_CHANNEL_MAX];
 static uint8_t mu8_PwmAcPhase;
+static StaticTimer_t mt_OutputTimerBuffer;
+static TimerHandle_t mt_OutputTimer;
 static esp_timer_handle_t mt_pwm_timer;
 
 
 /* --- Module global prototypes -------------------------------------------- */
 static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_OutType);
 static esp_err_t m_output_install_interval_timer(void);
+static void m_output_task(TimerHandle_t pxTimer);
+static void m_output_get_mode(void);
+static esp_err_t m_output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm);
 static void m_output_pwm_interval_timer_cb(void* arg);
 
 /* --- Implementation ------------------------------------------------------ */
@@ -147,6 +168,9 @@ esp_err_t output_init(void)
 
    if (t_Err == ESP_OK)
    {
+      mu8_OutputMode = 0xFF;  // invalidate output mode
+      m_output_get_mode();    // read current output mode
+
       // install interval timer
       t_Err = m_output_install_interval_timer();
    }
@@ -210,7 +234,7 @@ static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_Ou
 
       mat_Output[ou32_Channel].t_OutSetup.u8_OutType = (t_Err != ESP_OK) ? OUTPUT_TYPE_INVALID : ou8_OutType;
 
-      (void)output_set_pwm(ou32_Channel, 0);
+      (void)m_output_set_pwm(ou32_Channel, 0);
    }
 
    return t_Err;
@@ -225,7 +249,7 @@ static esp_err_t m_output_init(const uint32_t ou32_Channel, const uint8_t ou8_Ou
  */
 static esp_err_t m_output_install_interval_timer(void)
 {
-   esp_err_t err;
+   esp_err_t t_Err;
    const esp_timer_create_args_t pwm_timer_args =
    {
       .callback = &m_output_pwm_interval_timer_cb,
@@ -235,15 +259,91 @@ static esp_err_t m_output_install_interval_timer(void)
       .name = "PWM_timer"
    };
 
-   err = esp_timer_create(&pwm_timer_args, &mt_pwm_timer);
-   if (err == ESP_OK)
+   t_Err = esp_timer_create(&pwm_timer_args, &mt_pwm_timer);
+   if (t_Err == ESP_OK)
    {
-      err = esp_timer_start_periodic(mt_pwm_timer, OUTPUT_PWM_AC_TIMER_INTERVAL_US);
+      t_Err = esp_timer_start_periodic(mt_pwm_timer, OUTPUT_PWM_AC_TIMER_INTERVAL_US);
+   }
+   if (t_Err == ESP_OK)
+   {
+      t_Err = ESP_FAIL;
+
+      mt_OutputTimer = xTimerCreateStatic("OutputTask", OUTPUT_TASK_CYCLE_MS/portTICK_PERIOD_MS, pdTRUE,
+                                          NULL, &m_output_task, &mt_OutputTimerBuffer);
+      if (mt_OutputTimer != NULL)
+      {
+         if (xTimerStart(mt_OutputTimer, 0u) == pdPASS)
+         {
+            t_Err = ESP_OK;
+         }
+      }
    }
 
-   return err;
+   return t_Err;
 }
 
+/**
+ * The cyclic output task function
+ */
+static void m_output_task(TimerHandle_t pxTimer)
+{
+   (void)pxTimer;
+   m_output_get_mode();
+
+   // process all outputs
+   for (uint32_t u32_Output = 0u; u32_Output < OUTPUT_NUM_CHANNEL_MAX; u32_Output++)
+   {
+      T_output * const pt_Output = &mat_Output[u32_Output];
+
+      if (pt_Output->u8_OutputTaskLock == 0u)
+      {
+         int32_t s32_OutputValue = 0u;
+
+         // get required output value
+         if (mu8_OutputMode == OUTPUT_MODE_FIX)
+         {
+            s32_OutputValue = pt_Output->t_OutSetup.u16_OutValueDef;
+         }
+         else if (mu8_OutputMode == OUTPUT_MODE_AUTO)
+         {
+            if ((pt_Output->t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u)
+            {
+               s32_OutputValue = pt_Output->s32_OutValueRequest;
+            }
+            else
+            {
+               s32_OutputValue = pt_Output->t_OutSetup.u16_OutValueDef;
+            }
+         }
+         else
+         {
+            // output value is 0 (off)
+         }
+
+         // output value changed?
+         if (s32_OutputValue != pt_Output->s32_OutValue)
+         {
+            m_output_set_pwm(u32_Output, s32_OutputValue);
+         }
+      }
+   }
+}
+
+static void m_output_get_mode(void)
+{
+   static const uint8_t hau8_SwitchOutputModeTab[3] = { OUTPUT_MODE_AUTO, OUTPUT_MODE_OFF, OUTPUT_MODE_FIX };
+   static const uint32_t hau32_OutputModeStatusLed[3] = { OUTPUT_STATUS_LED_OFF, OUTPUT_STATUS_LED_FIX, OUTPUT_STATUS_LED_AUTO };
+   uint32_t u32_Switch = io_get_switch_button();
+   // TBD UH: workaround for USB low voltage supply: 5V is actually only 4.3V
+   u32_Switch = (u32_Switch == (SWITCH_MID|BUTTON_1_MASK)) ? SWITCH_UP : (u32_Switch & SWITCH_MASK);
+   const uint8_t u8_OutputMode = hau8_SwitchOutputModeTab[u32_Switch];
+
+   if (u8_OutputMode != mu8_OutputMode)
+   {
+      io_set_led(STATUS_LED_CPU, hau32_OutputModeStatusLed[u8_OutputMode]);   // set output mode status LED
+      mu8_OutputMode = u8_OutputMode;
+   }
+}
 
 /**
  * @brief read output setup data
@@ -273,12 +373,14 @@ esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data
 
    if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) && (opt_OutSetup != NULL))
    {
+      mat_Output[ou32_Channel].u8_OutputTaskLock = 1u;
       mat_Output[ou32_Channel].t_OutSetup = *opt_OutSetup;
       err = m_output_init(ou32_Channel, opt_OutSetup->u8_OutType);
       if (err == ESP_OK)
       {
          err = output_data_store(ou32_Channel, opt_OutSetup);
       }
+      mat_Output[ou32_Channel].u8_OutputTaskLock = 0u;
    }
 
    return err;
@@ -294,7 +396,54 @@ esp_err_t output_set_setup(const uint32_t ou32_Channel, const T_out_channel_data
  *  - ESP_ERR_INVALIG_ARG: ou32_Channel or os32_OutPwm out of range
  *  - Others: Fail
  */
-esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
+esp_err_t output_set_value(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
+{
+   esp_err_t err = ESP_ERR_INVALID_ARG;
+
+   if ((ou32_Channel < OUTPUT_NUM_CHANNEL_MAX) && (os32_OutPwm >= OUTPUT_PWM_MIN) && (os32_OutPwm <= OUTPUT_PWM_MAX))
+   {
+      mat_Output[ou32_Channel].s32_OutValueRequest = os32_OutPwm;
+      err = ESP_OK;
+   }
+
+   return err;
+}
+
+/**
+ * @brief Get output PWM value
+ *
+ * @param ou32_Channel  output channel, range: [0 .. OUTPUT_NUM_CHANNEL_MAX-1]
+ * @param ops32_OutPwm  reference, returns the last set PWM value
+ * @return esp_err_t
+ *  - ESP_OK: Success
+ *  - ESP_ERR_INVALIG_ARG: ou32_Channel out of range
+ *  - Others: Fail
+ */
+esp_err_t output_get_value(const uint32_t ou32_Channel, int32_t * const ops32_OutPwm)
+{
+   esp_err_t err = ESP_ERR_INVALID_ARG;
+
+   if (ou32_Channel < OUTPUT_NUM_CHANNEL_MAX)
+   {
+      *ops32_OutPwm = mat_Output[ou32_Channel].s32_OutValue;
+
+      err = ESP_OK;
+   }
+
+   return err;
+}
+
+/**
+ * @brief Set output PWM value
+ *
+ * @param ou32_Channel  output channel, range: [0 .. OUTPUT_NUM_CHANNEL_MAX-1]
+ * @param os32_OutPwm   output PWM value, range [OUTPUT_PWM_MIN .. OUTPUT_PWM_MAX]
+ * @return esp_err_t
+ *  - ESP_OK: Success
+ *  - ESP_ERR_INVALIG_ARG: ou32_Channel or os32_OutPwm out of range
+ *  - Others: Fail
+ */
+static esp_err_t m_output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
 {
    esp_err_t err = ESP_ERR_INVALID_ARG;
 
@@ -327,30 +476,6 @@ esp_err_t output_set_pwm(const uint32_t ou32_Channel, const int32_t os32_OutPwm)
          // OUTPUT_TYPE_INVALID: output value is always zero
          pt_Output->s32_OutValue = 0;
       }
-
-      err = ESP_OK;
-   }
-
-   return err;
-}
-
-/**
- * @brief Get output PWM value
- *
- * @param ou32_Channel  output channel, range: [0 .. OUTPUT_NUM_CHANNEL_MAX-1]
- * @param ops32_OutPwm  reference, returns the last set PWM value
- * @return esp_err_t
- *  - ESP_OK: Success
- *  - ESP_ERR_INVALIG_ARG: ou32_Channel out of range
- *  - Others: Fail
- */
-esp_err_t output_get_pwm(const uint32_t ou32_Channel, int32_t * const ops32_OutPwm)
-{
-   esp_err_t err = ESP_ERR_INVALID_ARG;
-
-   if (ou32_Channel < OUTPUT_NUM_CHANNEL_MAX)
-   {
-      *ops32_OutPwm = mat_Output[ou32_Channel].s32_OutValue;
 
       err = ESP_OK;
    }
