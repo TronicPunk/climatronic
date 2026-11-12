@@ -16,9 +16,6 @@
 
 /* --- Defines ------------------------------------------------------------- */
 
-#define OUTPUT_MODE_OFF                   0u             // force all outputs off
-#define OUTPUT_MODE_FIX                   1u             // set outputs with predefined standard values
-#define OUTPUT_MODE_AUTO                  2u             // outputs can be set by controller or remote (webserver, MQTT)
 #define OUTPUT_STATUS_LED_OFF             0x00003232uL   // all outputs off: light blue
 #define OUTPUT_STATUS_LED_FIX             0x00004008uL   // outputs use standard values: green
 #define OUTPUT_STATUS_LED_AUTO            0x005040FFuL   // outputs are in auto mode: light violet
@@ -176,6 +173,11 @@ esp_err_t output_init(void)
    }
 
    return t_Err;
+}
+
+uint8_t output_get_mode(void)
+{
+   return mu8_OutputMode;
 }
 
 /**

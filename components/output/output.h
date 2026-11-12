@@ -11,6 +11,9 @@
 #include "output_data.h"
 
 /* --- Defines ------------------------------------------------------------- */
+#define OUTPUT_MODE_OFF   0u   // force all outputs off
+#define OUTPUT_MODE_FIX   1u   // set outputs to predefined standard values
+#define OUTPUT_MODE_AUTO  2u   // outputs can be set by controller or remote
 
 /* --- Types --------------------------------------------------------------- */
 
@@ -24,6 +27,13 @@
  *  - Others: Fail
  */
 esp_err_t output_init(void);
+
+/**
+ * @brief Get the mode currently selected by the controller
+ *
+ * @return OUTPUT_MODE_OFF, OUTPUT_MODE_FIX, or OUTPUT_MODE_AUTO
+ */
+uint8_t output_get_mode(void);
 
 /**
  * @brief read output setup data

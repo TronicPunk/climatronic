@@ -20,6 +20,51 @@
       th {
          background-color: #f0f0f0;
       }
+      .output-mode {
+         display: inline-block;
+         min-width: 100px;
+         padding: 6px 12px;
+         border: 2px solid #333;
+         border-radius: 4px;
+         color: #fff;
+         font-weight: bold;
+         text-align: center;
+      }
+      .output-mode-off {
+         background-color: #03A5FC;
+      }
+      .output-mode-fix {
+         background-color: #00FFCC;
+      }
+      .output-mode-auto {
+         background-color: #9F00FF;
+      }
+      .output-mode-unknown {
+         background-color: #555;
+      }
+      .output-write-checkbox {
+         appearance: none;
+         width: 18px;
+         height: 18px;
+         margin: 0;
+         border: 2px solid #444;
+         border-radius: 3px;
+         background-color: #fff;
+         opacity: 1;
+         vertical-align: middle;
+      }
+      .output-write-checkbox:checked {
+         background-color: #333;
+         background-image: linear-gradient(45deg, transparent 43%, #fff 43%, #fff 56%, transparent 56%),
+                           linear-gradient(-45deg, transparent 38%, #fff 38%, #fff 51%, transparent 51%);
+      }
+      .output-write-checkbox:indeterminate {
+         background-color: #777;
+         background-image: linear-gradient(#fff, #fff);
+         background-repeat: no-repeat;
+         background-position: center;
+         background-size: 10px 2px;
+      }
       .tabs {
          display: flex;
          gap: 10px;
@@ -39,21 +84,15 @@
       .tab-panel.active {
          display: block;
       }
-      .slider-row {
-         display: flex;
-         align-items: center;
-         margin-bottom: 12px;
+      .output-slider {
+         width: min(220px, 100%);
+         vertical-align: middle;
       }
-      .slider-row label {
-         width: 150px;
-      }
-      .slider-row input[type="range"] {
-         flex: 0 1 150px;
-      }
-      .slider-row span {
-         width: 50px;
+      .output-percent {
+         display: inline-block;
+         min-width: 48px;
+         margin-left: 8px;
          text-align: right;
-         margin-left: 10px;
       }
       .config-input {
          width: 100%;
@@ -122,14 +161,22 @@
    <div>Letzte Aktualisierung: <span id="timestamp">--:--:--</span></div>
    <hr>
    <h2>Ausgänge</h2>
-   <label for="modeSwitch">Betriebsart:</label>
-   <select id="modeSwitch" onchange="setMode()">
-       <option value="off">Aus</option>
-       <option value="manual">Manuell</option>
-       <option value="auto">Automatik</option>
-   </select>
+   <span>Betriebsart:</span>
+   <span id="outputMode" class="output-mode output-mode-unknown">--</span>
    <br><br>
-   <div id="sliders-container"></div>
+   <table id="outputMonitorTable">
+      <thead>
+         <tr>
+            <th>Ausgang</th>
+            <th>Name</th>
+            <th>Typ</th>
+            <th>MQTT write</th>
+            <th>Ausgangswert (0...1000)</th>
+            <th>Ausgang manuell</th>
+         </tr>
+      </thead>
+      <tbody></tbody>
+   </table>
 </section>
 
 <section id="tab-setup-sensor" class="tab-panel">
@@ -140,7 +187,7 @@
             <th>Bus</th>
             <th>Sensor Typ</th>
             <th>Name</th>
-            <th>Read</th>
+            <th>MQTT sichtbar</th>
          </tr>
       </thead>
       <tbody></tbody>
@@ -159,8 +206,8 @@
             <th>Name</th>
             <th>Typ</th>
             <th>Fix-Wert</th>
-            <th>Read</th>
-            <th>Write</th>
+            <th>MQTT sichtbar</th>
+            <th>MQTT write</th>
          </tr>
       </thead>
       <tbody></tbody>
@@ -229,7 +276,7 @@
 <script>
 let SensorCount = -1;
 let OutputChannels = 8;
-let CurrentMode = "auto";
+let CurrentMode = -1;
 let WifiConfigLoaded = false;
 let SavedWifiSsid = "";
 let SavedWifiOpenNetwork = false;
@@ -259,32 +306,58 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 function createSliders(count) {
-  const container = document.getElementById("sliders-container");
+  const tbody = document.querySelector("#outputMonitorTable tbody");
 
   for (let i = 0; i < count; i++) {
-    const row = document.createElement("div");
-    row.className = "slider-row";
+    const row = document.createElement("tr");
 
-    const label = document.createElement("label");
-    label.textContent = "OUT " + (i + 1);
+    const channelCell = document.createElement("td");
+    channelCell.textContent = "OUT " + (i + 1);
 
+    const nameCell = document.createElement("td");
+    nameCell.id = "outputName" + i;
+
+    const typeCell = document.createElement("td");
+    typeCell.id = "outputType" + i;
+
+    const writeCell = document.createElement("td");
+    const writeCheckbox = document.createElement("input");
+    writeCheckbox.type = "checkbox";
+    writeCheckbox.id = "outputWrite" + i;
+    writeCheckbox.className = "output-write-checkbox";
+    writeCheckbox.disabled = true;
+    writeCell.appendChild(writeCheckbox);
+
+    const valueCell = document.createElement("td");
+    valueCell.id = "outputValue" + i;
+    valueCell.textContent = "0";
+
+    const sliderCell = document.createElement("td");
     const slider = document.createElement("input");
     slider.type = "range";
     slider.min = "0";
     slider.max = "100";
-    slider.value = "50";
+    slider.step = "0.1";
+    slider.value = "0";
     slider.id = "slider" + i;
+    slider.className = "output-slider";
     slider.disabled = true;
-    slider.oninput = () => { setOutput(i, slider.value); }
+    slider.oninput = () => { setOutput(i, slider.value); };
 
-    const valueDisplay = document.createElement("span");
-    valueDisplay.id = "value" + i;
-    valueDisplay.textContent = "50 %";
+    const percentDisplay = document.createElement("span");
+    percentDisplay.id = "outputPercent" + i;
+    percentDisplay.className = "output-percent";
+    percentDisplay.textContent = "0.0%";
 
-    row.appendChild(label);
-    row.appendChild(slider);
-    row.appendChild(valueDisplay);
-    container.appendChild(row);
+    sliderCell.appendChild(slider);
+    sliderCell.appendChild(percentDisplay);
+    row.appendChild(channelCell);
+    row.appendChild(nameCell);
+    row.appendChild(typeCell);
+    row.appendChild(writeCell);
+    row.appendChild(valueCell);
+    row.appendChild(sliderCell);
+    tbody.appendChild(row);
   }
 }
 
@@ -387,20 +460,53 @@ function format(value, format) {
 
 function fetchOutputData() {
   fetch('/api/output')
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Output-Daten konnten nicht geladen werden.');
+      }
+      return response.json();
+    })
     .then(data => updateOutput(data))
-    .catch(error => console.error('Fehler beim Laden der Output-Daten:', error));
+    .catch(error => {
+      CurrentMode = -1;
+      const modeDisplay = document.getElementById('outputMode');
+      modeDisplay.textContent = 'Unbekannt';
+      modeDisplay.className = 'output-mode output-mode-unknown';
+      for (let i = 0; i < OutputChannels; i++) {
+        document.getElementById("slider" + i).disabled = true;
+        const writeCheckbox = document.getElementById("outputWrite" + i);
+        writeCheckbox.checked = false;
+        writeCheckbox.indeterminate = true;
+      }
+      console.error('Fehler beim Laden der Output-Daten:', error);
+    });
 }
 function updateOutput(data) {
   CurrentMode = data.mode;
-  document.getElementById('modeSwitch').value = CurrentMode;
+  const modeNames = { 0: 'AUS', 1: 'FIX-Wert', 2: 'AUTO / manuell' };
+  const modeDisplay = document.getElementById('outputMode');
+  const modeClasses = { 0: 'output-mode-off', 1: 'output-mode-fix', 2: 'output-mode-auto' };
+  modeDisplay.textContent = modeNames[CurrentMode] || 'Unbekannt';
+  modeDisplay.className = 'output-mode ' + (modeClasses[CurrentMode] || 'output-mode-unknown');
   for (let i = 0; i < OutputChannels; i++) {
     const slider = document.getElementById("slider" + i);
-    let pwm = data.channels[i];
-    slider.value = pwm;
-    document.getElementById("value" + i).textContent = pwm + " %";
-    slider.disabled = (CurrentMode !== "manual");
+    const channel = data.channels[i];
+    const pwm = channel.value;
+    document.getElementById("outputName" + i).textContent = channel.name;
+    document.getElementById("outputType" + i).textContent = getOutputTypeName(channel.type);
+    const writeCheckbox = document.getElementById("outputWrite" + i);
+    writeCheckbox.checked = !!channel.wr;
+    writeCheckbox.indeterminate = false;
+    document.getElementById("outputValue" + i).textContent = String(pwm);
+    slider.value = (pwm / 10).toFixed(1);
+    document.getElementById("outputPercent" + i).textContent = (pwm / 10).toFixed(1) + "%";
+    slider.disabled = (CurrentMode !== 2 || !channel.wr);
   }
+}
+
+function getOutputTypeName(type) {
+  const typeNames = { 1: 'DIGITAL', 2: 'PWM 2KHz', 3: 'PWM_AC' };
+  return typeNames[type] || 'Unbekannt';
 }
 
 async function fetchSensorConfigData() {
@@ -813,29 +919,22 @@ async function saveOutputConfig(channel, name, type, value, readFlag, writeFlag)
 }
 
 function setOutput(outchn, val) {
-  document.getElementById("value" + outchn).textContent = val + " %";
   const slider = document.getElementById("slider" + outchn);
-  slider.value = val;
-  slider.disabled = (CurrentMode !== "manual");
+  if (CurrentMode !== 2 || slider.disabled) {
+    return;
+  }
+  const pwm = Math.round(Number(val) * 10);
+  document.getElementById("outputPercent" + outchn).textContent = (pwm / 10).toFixed(1) + "%";
+  document.getElementById("outputValue" + outchn).textContent = String(pwm);
   fetch("/set_output", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ channel: outchn, value: parseInt(val) })
-  });
-}
-
-function setMode() {
-  CurrentMode = document.getElementById("modeSwitch").value;
-  for (let i = 0; i < OutputChannels; i++) {
-    let value = document.getElementById("slider" + i).value;
-    if (CurrentMode === "off") { value = 0; }
-    setOutput(i, value);
-  }
-  fetch("/set_mode", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: CurrentMode })
-  });
+    body: JSON.stringify({ channel: outchn, value: pwm })
+  }).then(response => {
+    if (!response.ok) {
+      throw new Error('Ausgangswert konnte nicht gesetzt werden.');
+    }
+  }).catch(error => console.error('Fehler beim Setzen des Ausgangswerts:', error));
 }
 
 function fetchData() {

@@ -28,15 +28,10 @@ extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 
 /* --- Defines ------------------------------------------------------------- */
-#define OUTPUT_MODE_OFF       (0x00u)     // all outputs are off
-#define OUTPUT_MODE_MANUAL    (0x01u)     // manual output control enabled
-#define OUTPUT_MODE_AUTO      (0x02u)     // output controlled by software
 #define WIFI_SCAN_RESULT_MAX  10u
 
 /* --- Module globals ------------------------------------------------------ */
 static httpd_handle_t server = NULL;
-static uint8_t mu8_OutputMode = OUTPUT_MODE_AUTO;
-static const char * mapc_OutputMode[3] = { "off", "manual", "auto" };
 
 /* --- Types --------------------------------------------------------------- */
 
@@ -58,7 +53,6 @@ static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_wifi_config(httpd_req_t *req);
 static esp_err_t m_post_handler_restart(httpd_req_t *req);
-static esp_err_t m_set_handler_mode(httpd_req_t *req);
 static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, char *dst, const size_t dst_size);
 static bool m_json_parse_string(const char **cursor, char *dst, const size_t dst_size);
 
@@ -877,35 +871,55 @@ static bool m_parse_wifi_bssid(const char *text, uint8_t *bssid)
  */
 static esp_err_t m_get_handler_output(httpd_req_t *req)
 {
-   char resp[160];
-   int32_t idx = 0;
+   char resp[1200];
+   size_t idx = 0u;
    int32_t ret;
 
    // response example:
-   // {"mode":"manual", "channels":[1000,1000,1000,1000,1000,1000,1000,1000]}
-   resp[idx++] = '{';
-   ret = sprintf(&resp[idx], "\"mode\":\"%s\", \"channels\":[", mapc_OutputMode[mu8_OutputMode]);
-   if (ret > 0)
+   // {"mode":2,"channels":[{"value":1000,"name":"Fan","type":2,"wr":1}]}
+   ret = snprintf(resp, sizeof(resp), "{\"mode\":%u,\"channels\":[", (unsigned int)output_get_mode());
+   if ((ret < 0) || ((size_t)ret >= sizeof(resp)))
    {
-      idx += ret;
-      for (uint32_t u32_Channel = 0; u32_Channel < OUTPUT_NUM_CHANNEL_MAX; u32_Channel++)
-      {
-         int32_t s32_Pwm;
-
-         output_get_value(u32_Channel, &s32_Pwm);
-         s32_Pwm = (s32_Pwm + 5)/10;
-         ret = snprintf(&resp[idx], (sizeof(resp)-idx), "%ld,", s32_Pwm);
-         if (ret > 0)
-         {
-            idx += ret;
-         }
-         else
-         {
-            break;
-         }
-      }
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
    }
-   sprintf(&resp[idx-1], "]}");
+   idx = (size_t)ret;
+
+   for (uint32_t u32_Channel = 0u; u32_Channel < OUTPUT_NUM_CHANNEL_MAX; u32_Channel++)
+   {
+      T_out_channel_data t_Setup;
+      int32_t s32_Pwm;
+      char ac_Name[(OUTPUT_NAME_LEN_MAX * 2u) + 1u];
+
+      if ((output_get_setup(u32_Channel, &t_Setup) != ESP_OK) ||
+          (output_get_value(u32_Channel, &s32_Pwm) != ESP_OK))
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+
+      m_escape_json_string(t_Setup.ac_OutName, ac_Name, sizeof(ac_Name));
+      ret = snprintf(&resp[idx], sizeof(resp) - idx,
+                     "%s{\"value\":%ld,\"name\":\"%s\",\"type\":%u,\"wr\":%u}",
+                     (u32_Channel > 0u) ? "," : "",
+                     (long)s32_Pwm,
+                     ac_Name,
+                     (unsigned int)(t_Setup.u8_OutType & OUTPUT_TYPE_MASK),
+                     (unsigned int)((t_Setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u));
+      if ((ret < 0) || ((size_t)ret >= (sizeof(resp) - idx)))
+      {
+         httpd_resp_send_500(req);
+         return ESP_FAIL;
+      }
+      idx += (size_t)ret;
+   }
+
+   ret = snprintf(&resp[idx], sizeof(resp) - idx, "]}");
+   if ((ret < 0) || ((size_t)ret >= (sizeof(resp) - idx)))
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
 
    httpd_resp_set_type(req, "application/json");
    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
@@ -977,13 +991,40 @@ static esp_err_t m_set_handler_output(httpd_req_t *req)
    int pwm = 0;
    ret = sscanf(buf, "{\"channel\":%d,\"value\":%d}", &channel, &pwm); // JSON-Parser
 
-   if ((ret == 2) && (channel >= 0) && (channel <= OUTPUT_NUM_CHANNEL_MAX))
+   if ((ret != 2) || (channel < 0) || (channel >= OUTPUT_NUM_CHANNEL_MAX) ||
+       (pwm < OUTPUT_PWM_MIN) || (pwm > OUTPUT_PWM_MAX))
    {
-      output_set_value(channel, pwm * 10);
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+      return ESP_ERR_INVALID_ARG;
    }
 
-   httpd_resp_sendstr(req, "OK");
-   return ESP_OK;
+   T_out_channel_data t_Setup;
+   if (output_get_mode() != OUTPUT_MODE_AUTO)
+   {
+      httpd_resp_set_status(req, "403 Forbidden");
+      httpd_resp_sendstr(req, "Output control is not available");
+      return ESP_ERR_INVALID_STATE;
+   }
+   if (output_get_setup((uint32_t)channel, &t_Setup) != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+   if ((t_Setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) == 0u)
+   {
+      httpd_resp_set_status(req, "403 Forbidden");
+      httpd_resp_sendstr(req, "Output is not writable");
+      return ESP_ERR_INVALID_STATE;
+   }
+
+   esp_err_t err = output_set_value((uint32_t)channel, pwm);
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   return httpd_resp_sendstr(req, "OK");
 }
 
 static esp_err_t m_set_handler_output_setup(httpd_req_t *req)
@@ -1220,35 +1261,6 @@ static esp_err_t m_post_handler_restart(httpd_req_t *req)
    return ESP_OK;
 }
 
-/**
- * @brief set handler to set output mode
- *
- * @return esp_err_t
- *  - ESP_OK:     Success
- *  - ESP_FAIL:   Something went wrong with request data
- */
-static esp_err_t m_set_handler_mode(httpd_req_t *req)
-{
-   char buf[100];
-   int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
-   if (ret <= 0) return ESP_FAIL;
-   buf[ret] = '\0';
-   if (strstr(buf, "manual"))
-   {
-      mu8_OutputMode = OUTPUT_MODE_MANUAL;
-   }
-   else if (strstr(buf, "auto"))
-   {
-      mu8_OutputMode = OUTPUT_MODE_AUTO;
-   }
-   else
-   {
-      mu8_OutputMode = OUTPUT_MODE_OFF;
-   }
-   httpd_resp_sendstr(req, "OK");
-   return ESP_OK;
-}
-
 void start_webserver(void)
 {
    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -1272,7 +1284,6 @@ void start_webserver(void)
    httpd_uri_t set_system_setup_uri = {.uri="/set_system_setup", .method=HTTP_POST, .handler=m_set_handler_system_setup, .user_ctx=NULL};
    httpd_uri_t set_wifi_config_uri = {.uri="/set_wifi_config", .method=HTTP_POST, .handler=m_set_handler_wifi_config, .user_ctx=NULL};
    httpd_uri_t restart_uri = {.uri="/restart", .method=HTTP_POST, .handler=m_post_handler_restart, .user_ctx=NULL};
-   httpd_uri_t set_mode_uri = {.uri="/set_mode", .method=HTTP_POST, .handler=m_set_handler_mode, .user_ctx=NULL};
 
    httpd_register_uri_handler(server, &root);
    httpd_register_uri_handler(server, &favicon);
@@ -1289,7 +1300,6 @@ void start_webserver(void)
    httpd_register_uri_handler(server, &set_system_setup_uri);
    httpd_register_uri_handler(server, &set_wifi_config_uri);
    httpd_register_uri_handler(server, &restart_uri);
-   httpd_register_uri_handler(server, &set_mode_uri);
 }
 
 void stop_webserver(void)
