@@ -185,7 +185,7 @@ static int32_t m_set_led(void)
       set_cursor(19u, 9u);
       printf("%06lX", u32_Color);
 
-      io_set_led(u32_LED, u32_Color);
+      io_set_led(u32_LED, u32_Color, 0xFFFFFFFFuL);
 
       u8_Key = get_key();
    }

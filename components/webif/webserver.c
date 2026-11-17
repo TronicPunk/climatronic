@@ -14,7 +14,7 @@
 #include "system_data.h"
 #include "wifi_data.h"
 #include "mqtt_data.h"
-#include "remote_mqtt.h"
+#include "mqtt_interface.h"
 #include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -1579,7 +1579,7 @@ static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
       return err;
    }
 
-   err = remote_mqtt_restart();
+   err = mqtt_client_restart();
    if (err != ESP_OK)
    {
       httpd_resp_send_500(req);

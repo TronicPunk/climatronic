@@ -44,12 +44,14 @@
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
 esp_err_t io_init(void);
-void     io_set_sensor_supply_state(const uint32_t ou32_State);   // set sensor supply on/off
-uint32_t io_get_sensor_supply_state(void);                        // get sensor supply state
-uint32_t io_get_sensor_supply_voltage(void);                      // get sensor supply voltage in mV
+void     io_set_sensor_supply_state(const uint32_t ou32_State);            // set sensor supply on/off
+uint32_t io_get_sensor_supply_state(void);                                 // get sensor supply state
+uint32_t io_get_sensor_supply_voltage(void);                               // get sensor supply voltage in mV
 void     io_set_led_off(void);                                             // set all LEDs off
-void     io_set_led(const uint32_t ou32_Led, const uint32_t ou32_Color);   // set LED color
+void     io_set_led(const uint32_t ou32_Led, const uint32_t ou32_Color,    // set LED color
+                    const uint32_t ou32_BlinkPattern);                     // and blink pattern
 uint32_t io_get_led_color(const uint32_t ou32_Led);                        // get LED color
+uint32_t io_get_led_blink_pattern(const uint32_t ou32_Led);                // get LED blink pattern
 uint32_t io_get_switch_button(void);                                       // get switch and push button state
 
 /* -- Implementation ------------------------------------------------------------------------------------------------ */

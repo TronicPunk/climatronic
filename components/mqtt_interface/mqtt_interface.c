@@ -1,4 +1,5 @@
-#include "remote_mqtt.h"
+
+#include "mqtt_interface.h"
 
 #include <errno.h>
 #include <math.h>
@@ -10,17 +11,20 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
+#include "wifi_connect.h"
 #include "output.h"
 #include "sensor.h"
 #include "sensor_api.h"
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "timer.h"
+#include "inout.h"
 
 #define MQTT_TOPIC_MAX_LEN 128u
 #define MQTT_PAYLOAD_MAX_LEN 256u
 
-static const char *TAG = "remote_mqtt";
+static const char *TAG = "mqtt_client";
 static esp_mqtt_client_handle_t mqtt_client;
 static volatile bool mqtt_connected;
 static T_mqtt_data mt_MqttDataRuntime;
@@ -59,6 +63,7 @@ static void m_publish_message(const char *topic, const char *payload,
 
 static void m_publish_sensor(const uint16_t sensor_idx)
 {
+   // requires 504 byte stack
    T_sensor_info info;
    T_sensor_data data;
    char topic[MQTT_TOPIC_MAX_LEN];
@@ -75,7 +80,7 @@ static void m_publish_sensor(const uint16_t sensor_idx)
       return;
    }
 
-   const int topic_len = snprintf(topic, sizeof(topic), "%s/sensors/%u/state", mpc_TopicPrefix, (unsigned int)sensor_idx);
+   const int topic_len = snprintf(topic, sizeof(topic), "%s/sensors/%s/state", mpc_TopicPrefix, info.s_Name);
    const int temperature_len = m_format_float(temperature, sizeof(temperature), data.f32_Temperature);
    const int pressure_len = m_format_float(pressure, sizeof(pressure), data.f32_Pressure);
    const int humidity_len = m_format_float(humidity, sizeof(humidity), data.f32_Humidity);
@@ -89,12 +94,11 @@ static void m_publish_sensor(const uint16_t sensor_idx)
       ESP_LOGW(TAG, "Sensor %u MQTT state exceeds buffer capacity", (unsigned int)sensor_idx);
       return;
    }
-
+   const uint32_t u32_AgeSec = get_time_sec() - data.u32_TimeStampSec;
    const int payload_len = snprintf(payload, sizeof(payload),
                                     "{\"temperature\":%s,\"pressure\":%s,"
-                                    "\"humidity\":%s,\"co2\":%s,\"timestamp\":%lu}",
-                                    temperature, pressure, humidity, co2,
-                                    (unsigned long)data.u32_TimeStampSec);
+                                    "\"humidity\":%s,\"co2\":%s,\"age\":%lu}",
+                                    temperature, pressure, humidity, co2, u32_AgeSec);
    if ((payload_len < 0) || ((size_t)payload_len >= sizeof(payload)))
    {
       ESP_LOGW(TAG, "Sensor %u MQTT payload exceeds buffer capacity", (unsigned int)sensor_idx);
@@ -117,7 +121,7 @@ static void m_publish_output(const uint32_t channel)
       return;
    }
 
-   const int topic_len = snprintf(topic, sizeof(topic), "%s/outputs/%lu/state", mpc_TopicPrefix, (unsigned long)channel);
+   const int topic_len = snprintf(topic, sizeof(topic), "%s/outputs/%s/state", mpc_TopicPrefix, setup.ac_OutName);
    const int payload_len = snprintf(payload, sizeof(payload), "%ld", (long)value);
    if ((topic_len < 0) || ((size_t)topic_len >= sizeof(topic)) ||
        (payload_len < 0) || ((size_t)payload_len >= sizeof(payload)))
@@ -148,10 +152,11 @@ static void m_subscribe_output_commands(void)
    {
       T_out_channel_data setup;
       char topic[MQTT_TOPIC_MAX_LEN];
+
       if ((output_get_setup(channel, &setup) == ESP_OK) &&
           ((setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u))
       {
-         const int len = snprintf(topic, sizeof(topic), "%s/outputs/%lu/set", mpc_TopicPrefix, (unsigned long)channel);
+         const int len = snprintf(topic, sizeof(topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
          if ((len < 0) || ((size_t)len >= sizeof(topic)))
          {
             ESP_LOGE(TAG, "Output command topic exceeds buffer capacity");
@@ -175,16 +180,16 @@ static void m_handle_output_command(const char *topic, const size_t topic_len,
       char value_text[16];
       char *end;
       long value;
-      const int expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/%lu/set", mpc_TopicPrefix, (unsigned long)channel);
-      if ((expected_len < 0) || ((size_t)expected_len >= sizeof(expected_topic)) ||
+      const esp_err_t err = output_get_setup(channel, &setup);
+      const int expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
+      if ((err != ESP_OK) || (expected_len < 0) || ((size_t)expected_len >= sizeof(expected_topic)) ||
           ((size_t)expected_len != topic_len) ||
           (memcmp(topic, expected_topic, topic_len) != 0))
       {
          continue;
       }
 
-      if ((output_get_setup(channel, &setup) != ESP_OK) ||
-          ((setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) == 0u))
+      if ((setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) == 0u)
       {
          ESP_LOGW(TAG, "Rejected command for non-writable output %lu", (unsigned long)channel);
          return;
@@ -241,10 +246,12 @@ static void m_mqtt_event_handler(void *arg, esp_event_base_t event_base,
          m_subscribe_output_commands();
          m_publish_state();
          m_publish_message(mac_StatusTopic, "online", 0, 1);
+         io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_MQTT, 0xFFFFFFFFuL);
          break;
       case MQTT_EVENT_DISCONNECTED:
          mqtt_connected = false;
          ESP_LOGW(TAG, "Disconnected from broker");
+         io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_CONNECT, 0xFFFFFFFFuL);
          break;
       case MQTT_EVENT_DATA:
          if ((event->current_data_offset == 0) &&
@@ -277,16 +284,12 @@ static void m_mqtt_publish_task(void *arg)
          m_publish_state();
       }
       uint32_t interval = (mpt_MqttData != NULL)
-                              ? mpt_MqttData->pt_MqttSetup->u32_PublishIntervalMs : 5000u;
-      if ((interval < 500u) || (interval > 60000u))
-      {
-         interval = 5000u;
-      }
+                              ? mpt_MqttData->pt_MqttSetup->u32_PublishIntervalMs : CONFIG_CLIMATRONIC_MQTT_PUBLISH_INTERVAL_MS;
       vTaskDelay(pdMS_TO_TICKS(interval));
    }
 }
 
-esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
+esp_err_t mqtt_client_start(T_mqtt_data * const opt_MqttData)
 {
    if (opt_MqttData == NULL)
    {
@@ -295,7 +298,7 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
    mpt_MqttData = opt_MqttData;
    if (opt_MqttData->ac_BrokerUri[0] == '\0')
    {
-      remote_mqtt_stop();
+      mqtt_client_stop();
       ESP_LOGI(TAG, "MQTT disabled: broker URI is not configured");
       return ESP_OK;
    }
@@ -310,7 +313,7 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
 
    if (mqtt_client != NULL)
    {
-      remote_mqtt_stop();
+      mqtt_client_stop();
    }
    mpc_TopicPrefix = opt_MqttData->ac_TopicPrefix;
    const int status_len = snprintf(mac_StatusTopic, sizeof(mac_StatusTopic), "%s/status", mpc_TopicPrefix);
@@ -373,26 +376,30 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
                    &mt_PublishTaskHandle) != pdPASS)
    {
       ESP_LOGE(TAG, "Failed to create MQTT publishing task");
-      (void)esp_mqtt_client_stop(mqtt_client);
-      (void)esp_mqtt_client_destroy(mqtt_client);
-      mqtt_client = NULL;
+      mqtt_client_stop();
       return ESP_ERR_NO_MEM;
    }
    return ESP_OK;
 }
 
-esp_err_t remote_mqtt_restart(void)
+esp_err_t mqtt_client_restart(void)
 {
    if (mpt_MqttData == NULL)
    {
       mqtt_data_get(&mt_MqttDataRuntime);
       mpt_MqttData = &mt_MqttDataRuntime;
    }
-   remote_mqtt_stop();
-   return remote_mqtt_start(mpt_MqttData);
+   mqtt_client_stop();
+
+   return mqtt_client_start(mpt_MqttData);
 }
 
-void remote_mqtt_stop(void)
+bool mqtt_client_is_connected(void)
+{
+   return mqtt_connected;
+}
+
+void mqtt_client_stop(void)
 {
    if (mqtt_client != NULL)
    {

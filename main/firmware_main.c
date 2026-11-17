@@ -29,7 +29,7 @@
 #include "timer.h"
 #include "wifi_connect.h"
 #include "webserver.h"
-#include "remote_mqtt.h"
+#include "mqtt_interface.h"
 #include "menu.h"
 
 #include "system_setup.h"
@@ -151,7 +151,7 @@ void app_main(void)
       ESP_LOGI(TAG, "no sensor connected!\r\n", err);
    }
 
-   err = remote_mqtt_start(&t_MqttData);
+   err = mqtt_client_start(&t_MqttData);
    if (err != ESP_OK)
    {
       ESP_LOGE(TAG, "MQTT initialization failed: %s", esp_err_to_name(err));

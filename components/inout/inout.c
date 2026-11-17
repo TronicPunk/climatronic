@@ -20,8 +20,17 @@
 
 #define GPIO_OUT_MASK      ((1ULL << GPIO_OUT1) | (1ULL << GPIO_OUT2) | (1ULL << GPIO_OUT3) | (1ULL << GPIO_OUT4) | \
                             (1ULL << GPIO_OUT5) | (1ULL << GPIO_OUT6) | (1ULL << GPIO_OUT7) | (1ULL << GPIO_OUT8))
+#define LED_TIMER_CYCLE_MS 100
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
+
+typedef struct
+{
+   uint32_t u32_Color;
+   uint32_t u32_LastColor;
+   uint32_t u32_BlinkPattern;
+} T_led;
+
 typedef struct
 {
    uint32_t u32_VoltageLimit;
@@ -29,12 +38,42 @@ typedef struct
 } T_key_adc;
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
+static void m_led_timer(TimerHandle_t pxTimer);
 
 /* -- (Module) Global Variables ------------------------------------------------------------------------------------- */
 static led_strip_handle_t mt_LedStrip;
-static uint32_t mau32_LedColor[STATUS_LED_COUNT];
+static T_led mat_Led[STATUS_LED_COUNT];
+static StaticTimer_t mt_TimerBuffer;
+static TimerHandle_t mt_LedTimer;
 
 /* -- Implementation ------------------------------------------------------------------------------------------------ */
+
+/**
+ * LED timer function
+ */
+static void m_led_timer(TimerHandle_t pxTimer)
+{
+   static uint32_t hu32_BlinkMask;
+
+   hu32_BlinkMask = ((hu32_BlinkMask == 0u) || (hu32_BlinkMask == 0x80000000uL)) ? 0x00000001uL : hu32_BlinkMask << 1u;
+
+   for (uint32_t u32_Led = 0; u32_Led < STATUS_LED_COUNT; u32_Led++)
+   {
+      T_led * const pt_Led = &mat_Led[u32_Led];
+
+      const uint32_t u32_Color = ((pt_Led->u32_BlinkPattern & hu32_BlinkMask) != 0u) ? pt_Led->u32_Color : 0u;
+      if (u32_Color != pt_Led->u32_LastColor)
+      {
+         const uint32_t u32_R = (u32_Color & STATUS_LED_RED_MSK) >> STATUS_LED_RED_BITPOS;
+         const uint32_t u32_G = (u32_Color & STATUS_LED_GREEN_MSK) >> STATUS_LED_GREEN_BITPOS;
+         const uint32_t u32_B = (u32_Color & STATUS_LED_BLUE_MSK) >> STATUS_LED_BLUE_BITPOS;
+
+         led_strip_set_pixel(mt_LedStrip, u32_Led, u32_R, u32_G, u32_B);
+         led_strip_refresh(mt_LedStrip);
+         pt_Led->u32_LastColor = u32_Color;
+      }
+   }
+}
 
 /**
  * configure the ESP32 IO signals
@@ -83,8 +122,16 @@ esp_err_t io_init(void)
 
    // configure the RGB LED output
    led_strip_new_rmt_device(&t_LedStripConfig, &t_RmtConfig, &mt_LedStrip);
-   led_strip_set_pixel(mt_LedStrip, STATUS_LED_SENSOR, 0u, 0u, 0u);
-   led_strip_set_pixel(mt_LedStrip, STATUS_LED_WLAN, 0u, 0u, 0u);
+   for (uint32_t u32_Led = 0; u32_Led < STATUS_LED_COUNT; u32_Led++)
+   {
+      T_led * const pt_Led = &mat_Led[u32_Led];
+      pt_Led->u32_Color = 0u;
+      pt_Led->u32_LastColor = 0u;
+      pt_Led->u32_BlinkPattern = 0xFFFFFFFFuL;
+
+      led_strip_set_pixel(mt_LedStrip, u32_Led, 0u, 0u, 0u);
+   }
+   led_strip_refresh(mt_LedStrip);
 
    if (t_Err == ESP_OK)
    {
@@ -99,6 +146,18 @@ esp_err_t io_init(void)
          u32_SupplyMv = io_get_sensor_supply_voltage();
       }
       while (u32_SupplyMv < 4000u);
+
+      t_Err = ESP_FAIL;
+
+      mt_LedTimer = xTimerCreateStatic("LedTimer", LED_TIMER_CYCLE_MS/portTICK_PERIOD_MS, pdTRUE,
+                                       NULL, &m_led_timer, &mt_TimerBuffer);
+      if (mt_LedTimer != NULL)
+      {
+         if (xTimerStart(mt_LedTimer, 0u) == pdPASS)
+         {
+            t_Err = ESP_OK;
+         }
+      }
    }
    else
    {
@@ -139,7 +198,7 @@ void io_set_led_off(void)
 {
    for (uint32_t u32_LED = 0u; u32_LED < STATUS_LED_COUNT; u32_LED++)
    {
-      io_set_led(u32_LED, 0x000000uL);
+      io_set_led(u32_LED, 0x000000uL, 0xFFFFFFFFuL);
    }
 }
 
@@ -147,18 +206,14 @@ void io_set_led_off(void)
  * set status LED color:
  * ou32_Led = LED selector 0..2
  * ou32_Color = LED RGB color value R=[bit16..23], G=[bit8..15], B=[bit8..7]
+ * u32_BlinkPattern: 0xFFFFFFFF is 100% ON, 0x00000000 is 100% OFF*
  */
-void io_set_led(const uint32_t ou32_Led, const uint32_t ou32_Color)
+void io_set_led(const uint32_t ou32_Led, const uint32_t ou32_Color, const uint32_t ou32_BlinkPattern)
 {
    if ((mt_LedStrip != NULL) && (ou32_Led < STATUS_LED_COUNT))
    {
-      const uint32_t u32_R = (ou32_Color & STATUS_LED_RED_MSK) >> STATUS_LED_RED_BITPOS;
-      const uint32_t u32_G = (ou32_Color & STATUS_LED_GREEN_MSK) >> STATUS_LED_GREEN_BITPOS;
-      const uint32_t u32_B = (ou32_Color & STATUS_LED_BLUE_MSK) >> STATUS_LED_BLUE_BITPOS;
-
-      led_strip_set_pixel(mt_LedStrip, ou32_Led, u32_R, u32_G, u32_B);
-      led_strip_refresh(mt_LedStrip);
-      mau32_LedColor[ou32_Led] = ou32_Color;
+      mat_Led[ou32_Led].u32_Color = ou32_Color;
+      mat_Led[ou32_Led].u32_BlinkPattern = ou32_BlinkPattern;
    }
 }
 
@@ -172,12 +227,27 @@ uint32_t io_get_led_color(const uint32_t ou32_Led)
    uint32_t u32_Color = 0uL;
    if (ou32_Led < STATUS_LED_COUNT)
    {
-      u32_Color = mau32_LedColor[ou32_Led];
+      u32_Color = mat_Led[ou32_Led].u32_Color;
    }
 
    return u32_Color;
 }
 
+/**
+ * get status LED blink pattern:
+ * ou32_Led = LED selector 0..2
+ * u32_Blink pattern = 0xFFFFFFFF is 100% ON, 0x00000000 is 100% OFF
+ */
+uint32_t io_get_led_blink_pattern(const uint32_t ou32_Led)
+{
+   uint32_t u32_BlinkPattern = 0xFFFFFFFFuL;
+   if (ou32_Led < STATUS_LED_COUNT)
+   {
+      u32_BlinkPattern = mat_Led[ou32_Led].u32_BlinkPattern;
+   }
+
+   return u32_BlinkPattern;
+}
 
 /**
  * get status of switch and buttons:

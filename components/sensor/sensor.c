@@ -45,7 +45,6 @@ static const T_sensor_descriptor * mapt_SensorTypes[SENSOR_TYPE_COUNT] =
 
 /**
  * The cyclic sensor measurement task function
- *
  */
 static void m_sensor_task(TimerHandle_t pxTimer)
 {
@@ -151,14 +150,15 @@ static esp_err_t m_sensor_detect(void)
 
 static void m_sensor_set_status_led(void)
 {
-   static const uint32_t hau21_SensorStatusLed[12] =
+   static const uint32_t hau32_SensorStatusLed[12] =
    {
       0x00800000uL, 0x00804000uL, 0x00808000uL, 0x00408000uL,
       0x00008000uL, 0x00008040uL, 0x00008080uL, 0x00004080uL,
       0x00000080uL, 0x00400080uL, 0x00800080uL, 0x00800040uL,
    };
    const uint32_t u32_SensorStatusColor = (mu16_SensorCount < 11u) ? mu16_SensorCount : 11u;
-   io_set_led(STATUS_LED_SENSOR, hau21_SensorStatusLed[u32_SensorStatusColor]);
+
+   io_set_led(STATUS_LED_SENSOR, hau32_SensorStatusLed[u32_SensorStatusColor], 0xFFFFFFFFuL);
 }
 
 

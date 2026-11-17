@@ -25,8 +25,6 @@
 #define WIFI_STATUS_LED_NOWIFI      0x00C80000uL   // no WIFI: LED red
 #define WIFI_STATUS_LED_NOACCESS    0x00C82000uL   // WIFI no access data: LED orange
 #define WIFI_STATUS_LED_NOCONNECT   0x00A06000uL   // WIFI not connected: LED yellow
-#define WIFI_STATUS_LED_CONNECT     0x0028F028uL   // WIFI connected: LED light green
-
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
@@ -131,7 +129,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
             }
             wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
             xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
-            io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_NOCONNECT);
+            io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_NOCONNECT, 0x0FFF0FFFuL);
             wifi_disconnect_count++;
             ESP_LOGW(TAG,
                      "WiFi disconnected #%lu, reason=%d, last_rssi=%d dBm, reconnecting...",
@@ -158,7 +156,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
       xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
       wifi_connect_count++;
       m_wifi_log_connection_health();
-      io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_CONNECT);
+      io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_CONNECT, 0xFFFFFFFFuL);
       ESP_LOGI(TAG, "Connected to WiFi -- total connects: %lu", (unsigned long)wifi_connect_count);
    }
 }
@@ -192,7 +190,7 @@ static void m_wifi_start_setup_ap(const bool wifi_already_started)
       ESP_ERROR_CHECK(esp_wifi_start());
    }
    ESP_LOGI(TAG, "Setup AP SSID=%s; web interface at http://192.168.4.1", CONFIG_SETUP_AP_SSID);
-   io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_NOACCESS);
+   io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_NOACCESS, 0x0F0F0F0FuL);
 }
 
 void wifi_connect(T_wifi_data * const opt_WiFiData)

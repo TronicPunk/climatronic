@@ -8,7 +8,7 @@
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include "nvs_flash.h"
 #include "wifi_connect.h"
-#include "remote_mqtt.h"
+#include "mqtt_interface.h"
 #include "inout.h"
 #include "esp_system.h"
 
@@ -30,7 +30,7 @@
 //-----------------------------------------------------------------------------
 void system_sw_reset(void)
 {
-   remote_mqtt_stop();
+   mqtt_client_stop();
    nvs_flash_deinit();
    // if we stop the webserver here we can't call this function from webserver context
    // stop_webserver();

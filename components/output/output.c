@@ -342,7 +342,8 @@ static void m_output_get_mode(void)
 
    if (u8_OutputMode != mu8_OutputMode)
    {
-      io_set_led(STATUS_LED_CPU, hau32_OutputModeStatusLed[u8_OutputMode]);   // set output mode status LED
+      // set output mode status LED
+      io_set_led(STATUS_LED_CPU, hau32_OutputModeStatusLed[u8_OutputMode], 0xFFFFFFFFuL);
       mu8_OutputMode = u8_OutputMode;
    }
 }

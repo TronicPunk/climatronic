@@ -23,7 +23,7 @@ idf_component_register(
       system
       output
       webif
-      remote_mqtt
+      mqtt_interface
       timer
       esp_wifi
 )
