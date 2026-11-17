@@ -21,18 +21,19 @@ Eight outputs are available to control actuators for ventilation, humidification
 
 #### MQTT
 
-MQTT is disabled until a broker URI is configured in `idf.py menuconfig` under
-**Climatronic MQTT**. Configure the broker URI, optional username/password,
-topic prefix, and publish interval there. Use `mqtts://` for TLS; the default
-ESP certificate bundle is used for broker certificate validation. Broker
-credentials are stored in the local `sdkconfig`; do not commit a configured
-`sdkconfig` containing real secrets.
+MQTT is disabled until a broker URI is configured in the Web UI's
+**MQTT konfigurieren** tab. The tab stores settings in the device EEPROM and
+applies them immediately. The broker URI may be empty to disable MQTT. Set the
+optional username/password, topic prefix, publish interval (500–60000 ms), and
+output set timeout (500–60000 ms; currently unused) there. Enable anonymous
+login to clear both username and password. Use `mqtts://` for TLS; the default
+ESP certificate bundle is used for broker certificate validation.
 
-With the default prefix `climatronic`, remotely readable sensors publish
-JSON values to `climatronic/sensors/<index>/state`. Read-enabled outputs
+With the default prefix `climacontrol`, remotely readable sensors publish
+JSON values to `climacontrol/sensors/<index>/state`. Read-enabled outputs
 publish their current PWM value (0–1000) to
-`climatronic/outputs/<channel>/state`. Write-enabled outputs subscribe to
-`climatronic/outputs/<channel>/set`; send a decimal integer from 0 to 1000.
+`climacontrol/outputs/<channel>/state`. Write-enabled outputs subscribe to
+`climacontrol/outputs/<channel>/set`; send a decimal integer from 0 to 1000.
 Indices and channels are zero-based. Remote output commands are accepted only
 when the physical output selector is in AUTO mode. Configure the Read and Write
 flags per sensor/output in the web interface. The ESP32 is an MQTT client; the

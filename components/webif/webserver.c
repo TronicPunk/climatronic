@@ -13,10 +13,13 @@
 #include "output.h"
 #include "system_data.h"
 #include "wifi_data.h"
+#include "mqtt_data.h"
+#include "remote_mqtt.h"
 #include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -47,14 +50,28 @@ static esp_err_t m_get_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req);
 static esp_err_t m_get_handler_wifi_config(httpd_req_t *req);
+static esp_err_t m_get_handler_mqtt_config(httpd_req_t *req);
 static esp_err_t m_set_handler_output(httpd_req_t *req);
 static esp_err_t m_set_handler_sensor_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_output_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_system_setup(httpd_req_t *req);
 static esp_err_t m_set_handler_wifi_config(httpd_req_t *req);
+static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req);
 static esp_err_t m_post_handler_restart(httpd_req_t *req);
 static size_t m_escape_wifi_ssid(const uint8_t *ssid, const size_t ssid_len, char *dst, const size_t dst_size);
 static bool m_json_parse_string(const char **cursor, char *dst, const size_t dst_size);
+static bool m_parse_mqtt_config_json(const char *json,
+                                     char *broker_uri,
+                                     const size_t broker_uri_size,
+                                     char *username,
+                                     const size_t username_size,
+                                     char *password,
+                                     const size_t password_size,
+                                     char *topic_prefix,
+                                     const size_t topic_prefix_size,
+                                     uint32_t *publish_interval,
+                                     uint32_t *output_set_timeout,
+                                     bool *anonymous);
 
 /* --- Implementation ------------------------------------------------------ */
 
@@ -351,6 +368,163 @@ static bool m_json_parse_string(const char **cursor, char *dst, const size_t dst
       }
    }
    return false;
+}
+
+static bool m_json_parse_uint32(const char **cursor, uint32_t *value)
+{
+   uint32_t parsed = 0u;
+   bool has_digit = false;
+
+   while ((**cursor >= '0') && (**cursor <= '9'))
+   {
+      const uint32_t digit = (uint32_t)(**cursor - '0');
+      if (parsed > ((UINT32_MAX - digit) / 10u))
+      {
+         return false;
+      }
+      parsed = (parsed * 10u) + digit;
+      (*cursor)++;
+      has_digit = true;
+   }
+   if (!has_digit)
+   {
+      return false;
+   }
+   *value = parsed;
+   return true;
+}
+
+static bool m_parse_mqtt_config_json(const char *json,
+                                     char *broker_uri,
+                                     const size_t broker_uri_size,
+                                     char *username,
+                                     const size_t username_size,
+                                     char *password,
+                                     const size_t password_size,
+                                     char *topic_prefix,
+                                     const size_t topic_prefix_size,
+                                     uint32_t *publish_interval,
+                                     uint32_t *output_set_timeout,
+                                     bool *anonymous)
+{
+   const char *cursor = json;
+   uint8_t fields = 0u;
+   m_json_skip_whitespace(&cursor);
+   if (*cursor++ != '{')
+   {
+      return false;
+   }
+
+   while (true)
+   {
+      char key[32u];
+      uint8_t field;
+      m_json_skip_whitespace(&cursor);
+      if (*cursor == '}')
+      {
+         cursor++;
+         break;
+      }
+      if (!m_json_parse_string(&cursor, key, sizeof(key)))
+      {
+         return false;
+      }
+      m_json_skip_whitespace(&cursor);
+      if (*cursor++ != ':')
+      {
+         return false;
+      }
+      m_json_skip_whitespace(&cursor);
+
+      if (strcmp(key, "brokerUri") == 0)
+      {
+         field = 0x01u;
+         if (!m_json_parse_string(&cursor, broker_uri, broker_uri_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "username") == 0)
+      {
+         field = 0x02u;
+         if (!m_json_parse_string(&cursor, username, username_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "password") == 0)
+      {
+         field = 0x04u;
+         if (!m_json_parse_string(&cursor, password, password_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "topicPrefix") == 0)
+      {
+         field = 0x08u;
+         if (!m_json_parse_string(&cursor, topic_prefix, topic_prefix_size))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "publishIntervalMs") == 0)
+      {
+         field = 0x10u;
+         if (!m_json_parse_uint32(&cursor, publish_interval))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "outputSetTimeoutMs") == 0)
+      {
+         field = 0x20u;
+         if (!m_json_parse_uint32(&cursor, output_set_timeout))
+         {
+            return false;
+         }
+      }
+      else if (strcmp(key, "anonymous") == 0)
+      {
+         field = 0x40u;
+         if (strncmp(cursor, "true", 4u) == 0)
+         {
+            *anonymous = true;
+            cursor += 4;
+         }
+         else if (strncmp(cursor, "false", 5u) == 0)
+         {
+            *anonymous = false;
+            cursor += 5;
+         }
+         else
+         {
+            return false;
+         }
+      }
+      else
+      {
+         return false;
+      }
+
+      if ((fields & field) != 0u)
+      {
+         return false;
+      }
+      fields |= field;
+      m_json_skip_whitespace(&cursor);
+      if (*cursor == ',')
+      {
+         cursor++;
+      }
+      else if (*cursor != '}')
+      {
+         return false;
+      }
+   }
+
+   m_json_skip_whitespace(&cursor);
+   return (fields == 0x7Fu) && (*cursor == '\0');
 }
 
 /**
@@ -695,6 +869,53 @@ static esp_err_t m_get_handler_wifi_config(httpd_req_t *req)
                   (unsigned int)DEVICE_HOST_NAME_MAX,
                   (unsigned int)WIFI_SSID_MAX,
                   (unsigned int)WIFI_PASSWORD_MAX);
+   if ((ret <= 0) || ((size_t)ret >= sizeof(response)))
+   {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+   }
+
+   httpd_resp_set_type(req, "application/json");
+   httpd_resp_send(req, response, (size_t)ret);
+   return ESP_OK;
+}
+
+static esp_err_t m_get_handler_mqtt_config(httpd_req_t *req)
+{
+   T_mqtt_data mqtt_data;
+   char broker_uri[(MQTT_BROKER_URI_MAX * 6u) + 1u];
+   char username[(MQTT_BROKER_USER_NAME_MAX * 6u) + 1u];
+   char topic_prefix[(MQTT_TOPIC_PREFIX_MAX * 6u) + 1u];
+   char response[1800u];
+
+   mqtt_data_get(&mqtt_data);
+   (void)m_escape_wifi_ssid((const uint8_t *)mqtt_data.ac_BrokerUri,
+                            strlen(mqtt_data.ac_BrokerUri), broker_uri, sizeof(broker_uri));
+   (void)m_escape_wifi_ssid((const uint8_t *)mqtt_data.ac_BrokerUserName,
+                            strlen(mqtt_data.ac_BrokerUserName), username, sizeof(username));
+   (void)m_escape_wifi_ssid((const uint8_t *)mqtt_data.ac_TopicPrefix,
+                            strlen(mqtt_data.ac_TopicPrefix), topic_prefix, sizeof(topic_prefix));
+
+   const int ret = snprintf(response, sizeof(response),
+                            "{\"brokerUri\":\"%s\",\"username\":\"%s\","
+                            "\"passwordSet\":%s,\"anonymous\":%s,\"topicPrefix\":\"%s\","
+                            "\"publishIntervalMs\":%lu,\"outputSetTimeoutMs\":%lu,"
+                            "\"limits\":{\"brokerUri\":%u,\"username\":%u,\"password\":%u,"
+                            "\"topicPrefix\":%u,\"publishIntervalMin\":500,"
+                            "\"publishIntervalMax\":60000,\"outputSetTimeoutMin\":500,"
+                            "\"outputSetTimeoutMax\":60000}}",
+                            broker_uri,
+                            username,
+                            (mqtt_data.ac_BrokerUserPw[0] != '\0') ? "true" : "false",
+                            ((mqtt_data.ac_BrokerUserName[0] == '\0') &&
+                             (mqtt_data.ac_BrokerUserPw[0] == '\0')) ? "true" : "false",
+                            topic_prefix,
+                            (unsigned long)mqtt_data.pt_MqttSetup->u32_PublishIntervalMs,
+                            (unsigned long)mqtt_data.pt_MqttSetup->u32_OutSetTimeoutMs,
+                            (unsigned int)MQTT_BROKER_URI_MAX,
+                            (unsigned int)MQTT_BROKER_USER_NAME_MAX,
+                            (unsigned int)MQTT_BROKER_USER_PW_MAX,
+                            (unsigned int)MQTT_TOPIC_PREFIX_MAX);
    if ((ret <= 0) || ((size_t)ret >= sizeof(response)))
    {
       httpd_resp_send_500(req);
@@ -1253,6 +1474,122 @@ static esp_err_t m_set_handler_wifi_config(httpd_req_t *req)
    return ESP_OK;
 }
 
+static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
+{
+   char body[768u];
+   char broker_uri[MQTT_BROKER_URI_MAX + 1u] = "";
+   char username[MQTT_BROKER_USER_NAME_MAX + 1u] = "";
+   char password[MQTT_BROKER_USER_PW_MAX + 1u] = "";
+   char topic_prefix[MQTT_TOPIC_PREFIX_MAX + 1u] = "";
+   uint32_t publish_interval = 0u;
+   uint32_t output_set_timeout = 0u;
+   bool anonymous = false;
+   bool topic_prefix_valid = true;
+   size_t received = 0u;
+   T_mqtt_data current_data;
+
+   if ((req->content_len == 0u) || (req->content_len >= sizeof(body)))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid request size");
+      return ESP_ERR_INVALID_SIZE;
+   }
+   while (received < req->content_len)
+   {
+      const int ret = httpd_req_recv(req, &body[received], req->content_len - received);
+      if (ret <= 0)
+      {
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete request body");
+         return ESP_FAIL;
+      }
+      received += (size_t)ret;
+   }
+   body[received] = '\0';
+
+   if (!m_parse_mqtt_config_json(body,
+                                 broker_uri, sizeof(broker_uri),
+                                 username, sizeof(username),
+                                 password, sizeof(password),
+                                 topic_prefix, sizeof(topic_prefix),
+                                 &publish_interval, &output_set_timeout, &anonymous) ||
+       (strnlen(broker_uri, sizeof(broker_uri)) > MQTT_BROKER_URI_MAX) ||
+       (strnlen(username, sizeof(username)) > MQTT_BROKER_USER_NAME_MAX) ||
+       (strnlen(password, sizeof(password)) > MQTT_BROKER_USER_PW_MAX) ||
+       (strnlen(topic_prefix, sizeof(topic_prefix)) == 0u) ||
+       (strnlen(topic_prefix, sizeof(topic_prefix)) > MQTT_TOPIC_PREFIX_MAX) ||
+       (strchr(topic_prefix, '+') != NULL) || (strchr(topic_prefix, '#') != NULL) ||
+       (publish_interval < 500u) || (publish_interval > 60000u) ||
+       (output_set_timeout < 500u) || (output_set_timeout > 60000u) ||
+       (anonymous && ((username[0] != '\0') || (password[0] != '\0'))) ||
+       (!anonymous && (username[0] == '\0')))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid MQTT configuration");
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   for (const unsigned char *character = (const unsigned char *)topic_prefix;
+        *character != '\0'; character++)
+   {
+      if ((*character < 0x20u) || (*character == 0x7Fu))
+      {
+         topic_prefix_valid = false;
+         break;
+      }
+   }
+   if (!topic_prefix_valid)
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid MQTT topic prefix");
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   mqtt_data_get(&current_data);
+   if (!anonymous && (password[0] == '\0') && (current_data.ac_BrokerUserPw[0] == '\0'))
+   {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Enter a password or select anonymous login");
+      return ESP_ERR_INVALID_ARG;
+   }
+
+   esp_err_t err = mqtt_data_set_broker_uri(broker_uri);
+   if (err == ESP_OK)
+   {
+      err = mqtt_data_set_broker_username(username);
+   }
+   if ((err == ESP_OK) && (anonymous || (password[0] != '\0')))
+   {
+      err = mqtt_data_set_broker_userpw(password);
+   }
+   if (err == ESP_OK)
+   {
+      err = mqtt_data_set_topic_prefix(topic_prefix);
+   }
+   if (err == ESP_OK)
+   {
+      err = mqtt_data_set_publish_interval(publish_interval);
+   }
+   if (err == ESP_OK)
+   {
+      err = mqtt_data_set_outset_timeout(output_set_timeout);
+   }
+   if ((err == ESP_OK) && (mqtt_data_store() != ESP_OK))
+   {
+      err = ESP_FAIL;
+   }
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   err = remote_mqtt_restart();
+   if (err != ESP_OK)
+   {
+      httpd_resp_send_500(req);
+      return err;
+   }
+
+   httpd_resp_sendstr(req, "MQTT configuration saved and applied");
+   return ESP_OK;
+}
+
 static esp_err_t m_post_handler_restart(httpd_req_t *req)
 {
    httpd_resp_sendstr(req, "Restarting");
@@ -1264,7 +1601,7 @@ static esp_err_t m_post_handler_restart(httpd_req_t *req)
 void start_webserver(void)
 {
    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-   config.max_uri_handlers = 16;
+   config.max_uri_handlers = 20;
    config.stack_size = 8192;
 
    httpd_start(&server, &config);
@@ -1278,11 +1615,13 @@ void start_webserver(void)
    httpd_uri_t get_system_setup_data = {.uri="/api/system_setup", .method=HTTP_GET, .handler=m_get_handler_system_setup};
    httpd_uri_t get_wifi_scan = {.uri="/api/wifi_scan", .method=HTTP_GET, .handler=m_get_handler_wifi_scan};
    httpd_uri_t get_wifi_config = {.uri="/api/wifi_config", .method=HTTP_GET, .handler=m_get_handler_wifi_config};
+   httpd_uri_t get_mqtt_config = {.uri="/api/mqtt_config", .method=HTTP_GET, .handler=m_get_handler_mqtt_config};
    httpd_uri_t set_output_uri = {.uri="/set_output", .method=HTTP_POST, .handler=m_set_handler_output, .user_ctx=NULL};
    httpd_uri_t set_sensor_setup_uri = {.uri="/set_sensor_setup", .method=HTTP_POST, .handler=m_set_handler_sensor_setup, .user_ctx=NULL};
    httpd_uri_t set_output_setup_uri = {.uri="/set_output_setup", .method=HTTP_POST, .handler=m_set_handler_output_setup, .user_ctx=NULL};
    httpd_uri_t set_system_setup_uri = {.uri="/set_system_setup", .method=HTTP_POST, .handler=m_set_handler_system_setup, .user_ctx=NULL};
    httpd_uri_t set_wifi_config_uri = {.uri="/set_wifi_config", .method=HTTP_POST, .handler=m_set_handler_wifi_config, .user_ctx=NULL};
+   httpd_uri_t set_mqtt_config_uri = {.uri="/set_mqtt_config", .method=HTTP_POST, .handler=m_set_handler_mqtt_config, .user_ctx=NULL};
    httpd_uri_t restart_uri = {.uri="/restart", .method=HTTP_POST, .handler=m_post_handler_restart, .user_ctx=NULL};
 
    httpd_register_uri_handler(server, &root);
@@ -1294,11 +1633,13 @@ void start_webserver(void)
    httpd_register_uri_handler(server, &get_system_setup_data);
    httpd_register_uri_handler(server, &get_wifi_scan);
    httpd_register_uri_handler(server, &get_wifi_config);
+   httpd_register_uri_handler(server, &get_mqtt_config);
    httpd_register_uri_handler(server, &set_output_uri);
    httpd_register_uri_handler(server, &set_sensor_setup_uri);
    httpd_register_uri_handler(server, &set_output_setup_uri);
    httpd_register_uri_handler(server, &set_system_setup_uri);
    httpd_register_uri_handler(server, &set_wifi_config_uri);
+   httpd_register_uri_handler(server, &set_mqtt_config_uri);
    httpd_register_uri_handler(server, &restart_uri);
 }
 

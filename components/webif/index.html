@@ -136,8 +136,9 @@
   <button class="tab active" data-tab="monitor">Monitor</button>
   <button class="tab" data-tab="setup-sensor">Sensoren konfigurieren</button>
   <button class="tab" data-tab="setup-output">Ausgänge konfigurieren</button>
-  <button class="tab" data-tab="setup-system">Systemdaten</button>
+  <button class="tab" data-tab="setup-mqtt">MQTT konfigurieren</button>
   <button class="tab" data-tab="setup-wifi">WLAN konfigurieren</button>
+  <button class="tab" data-tab="setup-system">Systemdaten</button>
 </div>
 
 <section id="tab-monitor" class="tab-panel active">
@@ -273,6 +274,38 @@
    <p id="wifiConfigMessage" role="status"></p>
 </section>
 
+<section id="tab-setup-mqtt" class="tab-panel">
+   <h2>MQTT-Konfiguration</h2>
+   <div class="wifi-config">
+      <label for="mqttBrokerUri">Broker URI</label>
+      <input id="mqttBrokerUri" class="config-input" type="text" maxlength="127"
+             placeholder="mqtt://broker:1883">
+
+      <label for="mqttUsername">Broker Username</label>
+      <input id="mqttUsername" class="config-input" type="text" maxlength="31" autocomplete="username">
+
+      <label for="mqttPassword">Broker User Passwort</label>
+      <input id="mqttPassword" class="config-input" type="password" maxlength="31" autocomplete="new-password">
+      <span id="mqttPasswordHelp" class="wifi-help"></span>
+
+      <span>Anmeldung</span>
+      <label><input id="mqttAnonymous" type="checkbox"> Anonyme Anmeldung (Benutzer und Passwort löschen)</label>
+
+      <label for="mqttTopicPrefix">Topic Prefix</label>
+      <input id="mqttTopicPrefix" class="config-input" type="text" maxlength="31" required>
+
+      <label for="mqttPublishInterval">Publish Interval (ms)</label>
+      <input id="mqttPublishInterval" class="config-input" type="number" min="500" max="60000" step="1" required>
+
+      <label for="mqttOutputSetTimeout">Output Set Timeout (ms)</label>
+      <input id="mqttOutputSetTimeout" class="config-input" type="number" min="500" max="60000" step="1" required>
+   </div>
+   <div class="setup-actions">
+      <button id="saveMqttConfigBtn" type="button" class="save-btn">Speichern</button>
+   </div>
+   <p id="mqttConfigMessage" role="status"></p>
+</section>
+
 <script>
 let SensorCount = -1;
 let OutputChannels = 8;
@@ -281,6 +314,8 @@ let WifiConfigLoaded = false;
 let SavedWifiSsid = "";
 let SavedWifiOpenNetwork = false;
 let WifiScanResults = [];
+let MqttConfigLoaded = false;
+let MqttPasswordSet = false;
 
 function setTab(tabId) {
  document.querySelectorAll('.tab').forEach(tab => {
@@ -297,6 +332,8 @@ function setTab(tabId) {
      fetchSystemConfigData();
    } else if (isActive && tabId === 'setup-wifi') {
      fetchWifiConfigData();
+   } else if (isActive && tabId === 'setup-mqtt') {
+     fetchMqttConfigData();
    }
  });
 }
@@ -729,6 +766,114 @@ async function saveWifiConfig() {
   }
 }
 
+async function fetchMqttConfigData() {
+  if (MqttConfigLoaded) {
+    return;
+  }
+  const message = document.getElementById('mqttConfigMessage');
+  try {
+    const response = await fetch('/api/mqtt_config');
+    if (!response.ok) {
+      throw new Error('MQTT-Konfiguration konnte nicht geladen werden.');
+    }
+    const data = await response.json();
+    document.getElementById('mqttBrokerUri').maxLength = data.limits.brokerUri;
+    document.getElementById('mqttBrokerUri').value = data.brokerUri;
+    document.getElementById('mqttUsername').maxLength = data.limits.username;
+    document.getElementById('mqttUsername').value = data.username;
+    document.getElementById('mqttPassword').maxLength = data.limits.password;
+    MqttPasswordSet = data.passwordSet;
+    document.getElementById('mqttPasswordHelp').textContent = data.passwordSet
+      ? 'Passwort gespeichert; leer lassen = beibehalten.'
+      : 'Leer = keine Anmeldung; bei Benutzername ein Passwort eingeben.';
+    document.getElementById('mqttTopicPrefix').maxLength = data.limits.topicPrefix;
+    document.getElementById('mqttTopicPrefix').value = data.topicPrefix;
+    document.getElementById('mqttPublishInterval').value = data.publishIntervalMs;
+    document.getElementById('mqttOutputSetTimeout').value = data.outputSetTimeoutMs;
+    document.getElementById('mqttAnonymous').checked = data.anonymous;
+    setMqttAnonymousState(data.anonymous);
+    MqttConfigLoaded = true;
+    message.textContent = '';
+  } catch (error) {
+    console.error('Fehler beim Laden der MQTT-Konfiguration:', error);
+    message.textContent = error.message || 'MQTT-Konfiguration konnte nicht geladen werden.';
+  }
+}
+
+function setMqttAnonymousState(anonymous) {
+  document.getElementById('mqttUsername').disabled = anonymous;
+  document.getElementById('mqttPassword').disabled = anonymous;
+  if (anonymous) {
+    document.getElementById('mqttUsername').value = '';
+    document.getElementById('mqttPassword').value = '';
+  }
+}
+
+async function saveMqttConfig() {
+  const message = document.getElementById('mqttConfigMessage');
+  const saveButton = document.getElementById('saveMqttConfigBtn');
+  const brokerUri = document.getElementById('mqttBrokerUri').value;
+  const topicPrefix = document.getElementById('mqttTopicPrefix').value;
+  const publishIntervalMs = Number(document.getElementById('mqttPublishInterval').value);
+  const outputSetTimeoutMs = Number(document.getElementById('mqttOutputSetTimeout').value);
+  const anonymous = document.getElementById('mqttAnonymous').checked;
+  const username = anonymous ? '' : document.getElementById('mqttUsername').value;
+  const password = anonymous ? '' : document.getElementById('mqttPassword').value;
+
+  if (brokerUri.length > 127 || username.length > 31 || password.length > 31 ||
+      topicPrefix.length === 0 || topicPrefix.length > 31 ||
+      topicPrefix.includes('+') || topicPrefix.includes('#')) {
+    message.textContent = 'Bitte Brokerdaten und ein gültiges Topic Prefix eingeben.';
+    return;
+  }
+  if (!Number.isInteger(publishIntervalMs) || publishIntervalMs < 500 || publishIntervalMs > 60000) {
+    message.textContent = 'Publish-Intervall muss im Bereich 500 bis 60000 ms liegen.';
+    return;
+  }
+  if (!Number.isInteger(outputSetTimeoutMs) || outputSetTimeoutMs < 500 || outputSetTimeoutMs > 60000) {
+    message.textContent = 'Output Set Timeout muss im Bereich 500 bis 60000 ms liegen.';
+    return;
+  }
+  if (!anonymous && (!username || (!password && !MqttPasswordSet))) {
+    message.textContent = 'Bitte Benutzer und Passwort eingeben oder anonyme Anmeldung auswählen.';
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = 'Speichern...';
+  try {
+    const response = await fetch('/set_mqtt_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brokerUri,
+        username,
+        password,
+        topicPrefix,
+        publishIntervalMs,
+        outputSetTimeoutMs,
+        anonymous
+      })
+    });
+    if (!response.ok) {
+      throw new Error(await response.text() || 'MQTT-Konfiguration konnte nicht gespeichert werden.');
+    }
+    MqttPasswordSet = !anonymous && (password.length > 0 || MqttPasswordSet);
+    document.getElementById('mqttPassword').value = '';
+    document.getElementById('mqttPasswordHelp').textContent = MqttPasswordSet
+      ? 'Passwort gespeichert; leer lassen = beibehalten.'
+      : 'Leer = keine Anmeldung; bei Benutzername ein Passwort eingeben.';
+    message.textContent = brokerUri
+      ? 'Gespeichert und angewendet. Der MQTT-Client verbindet sich mit dem Broker.'
+      : 'Gespeichert und angewendet. MQTT ist deaktiviert (Broker URI leer).';
+  } catch (error) {
+    message.textContent = error.message || 'MQTT-Konfiguration konnte nicht gespeichert werden.';
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = 'Speichern';
+  }
+}
+
 async function saveSystemConfig() {
   const rows = document.querySelectorAll('#systemConfigTable tbody tr');
   const saveButton = document.getElementById('saveSystemConfigBtn');
@@ -961,6 +1106,10 @@ document.getElementById('wifiSsid').addEventListener('change', event => {
   }
 });
 document.getElementById('saveWifiConfigBtn').addEventListener('click', saveWifiConfig);
+document.getElementById('saveMqttConfigBtn').addEventListener('click', saveMqttConfig);
+document.getElementById('mqttAnonymous').addEventListener('change', event => {
+  setMqttAnonymousState(event.target.checked);
+});
 document.getElementById('toggleWifiPasswordBtn').addEventListener('click', () => {
   const passwordInput = document.getElementById('wifiPassword');
   const showPassword = passwordInput.type === 'password';

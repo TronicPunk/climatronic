@@ -23,6 +23,9 @@
 static const char *TAG = "remote_mqtt";
 static esp_mqtt_client_handle_t mqtt_client;
 static volatile bool mqtt_connected;
+static T_mqtt_data mt_MqttDataRuntime;
+static T_mqtt_data *mpt_MqttData;
+static TaskHandle_t mt_PublishTaskHandle;
 static char * mpc_TopicPrefix;                           // MQTT_TOPIC_PREFIX
 static char mac_StatusTopic[MQTT_TOPIC_PREFIX_MAX +8];   // MQTT_TOPIC_PREFIX + "/status" + '\0'
 
@@ -266,23 +269,33 @@ static void m_mqtt_event_handler(void *arg, esp_event_base_t event_base,
 
 static void m_mqtt_publish_task(void *arg)
 {
-   T_mqtt_data * const pt_MqttData = arg;
-   const TickType_t delay = pdMS_TO_TICKS(pt_MqttData->pt_MqttSetup->u32_PublishIntervalMs);
-
+   (void)arg;
    while (true)
    {
       if (mqtt_connected)
       {
          m_publish_state();
       }
-      vTaskDelay(delay);
+      uint32_t interval = (mpt_MqttData != NULL)
+                              ? mpt_MqttData->pt_MqttSetup->u32_PublishIntervalMs : 5000u;
+      if ((interval < 500u) || (interval > 60000u))
+      {
+         interval = 5000u;
+      }
+      vTaskDelay(pdMS_TO_TICKS(interval));
    }
 }
 
 esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
 {
+   if (opt_MqttData == NULL)
+   {
+      return ESP_ERR_INVALID_ARG;
+   }
+   mpt_MqttData = opt_MqttData;
    if (opt_MqttData->ac_BrokerUri[0] == '\0')
    {
+      remote_mqtt_stop();
       ESP_LOGI(TAG, "MQTT disabled: broker URI is not configured");
       return ESP_OK;
    }
@@ -295,6 +308,10 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
       return ESP_ERR_INVALID_ARG;
    }
 
+   if (mqtt_client != NULL)
+   {
+      remote_mqtt_stop();
+   }
    mpc_TopicPrefix = opt_MqttData->ac_TopicPrefix;
    const int status_len = snprintf(mac_StatusTopic, sizeof(mac_StatusTopic), "%s/status", mpc_TopicPrefix);
    if ((status_len < 0) || ((size_t)status_len >= sizeof(mac_StatusTopic)))
@@ -351,7 +368,9 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
       return err;
    }
 
-   if (xTaskCreate(m_mqtt_publish_task, "mqtt_publish", 4096u, opt_MqttData, 5u, NULL) != pdPASS)
+   if (mt_PublishTaskHandle == NULL &&
+       xTaskCreate(m_mqtt_publish_task, "mqtt_publish", 4096u, NULL, 5u,
+                   &mt_PublishTaskHandle) != pdPASS)
    {
       ESP_LOGE(TAG, "Failed to create MQTT publishing task");
       (void)esp_mqtt_client_stop(mqtt_client);
@@ -360,6 +379,17 @@ esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData)
       return ESP_ERR_NO_MEM;
    }
    return ESP_OK;
+}
+
+esp_err_t remote_mqtt_restart(void)
+{
+   if (mpt_MqttData == NULL)
+   {
+      mqtt_data_get(&mt_MqttDataRuntime);
+      mpt_MqttData = &mt_MqttDataRuntime;
+   }
+   remote_mqtt_stop();
+   return remote_mqtt_start(mpt_MqttData);
 }
 
 void remote_mqtt_stop(void)

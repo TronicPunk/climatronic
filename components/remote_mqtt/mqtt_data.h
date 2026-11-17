@@ -1,6 +1,6 @@
 /*
    MQTT configuration and setup data
-   load/store WiFi data from/to NVM
+   load/store MQTT data from/to NVM
 */
 
 #ifndef MQTT_DATA_H
@@ -23,7 +23,7 @@
 typedef struct
 {
    uint32_t u32_PublishIntervalMs;  // sensor and output data publish interval in milli seconds
-   uint32_t u32_OutSetTimeoutMs;    // output set timeout in milli seconds
+   uint32_t u32_OutSetTimeoutMs;    // output set timeout in milli seconds [500 ... 60000]
    uint8_t u8_Reserved[20];         // reserved
 } T_mqtt_setup;
 

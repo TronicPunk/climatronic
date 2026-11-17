@@ -5,6 +5,7 @@
 #include "esp_err.h"
 
 esp_err_t remote_mqtt_start(T_mqtt_data * const opt_MqttData);
+esp_err_t remote_mqtt_restart(void);
 void remote_mqtt_stop(void);
 
 #endif

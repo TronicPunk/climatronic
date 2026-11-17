@@ -235,12 +235,12 @@ esp_err_t mqtt_data_set_publish_interval(const uint32_t ou32_PublishIntervalMs)
 }
 
 /**
- * @brief set MQTT output set timeout in milli seconds. Valid range is [500 ... max]
+ * @brief set MQTT output set timeout in milli seconds. Valid range is [500 ... 60000]
  */
 esp_err_t mqtt_data_set_outset_timeout(const uint32_t ou32_OutSetTimeoutMs)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   if (ou32_OutSetTimeoutMs >= 500uL)
+   if ((ou32_OutSetTimeoutMs >= 500uL) && (ou32_OutSetTimeoutMs <= 60000uL))
    {
       T_mqtt_setup * pt_MqttSetup = &mt_MqttDataCrc.t_MqttData.t_MqttSetup;
 

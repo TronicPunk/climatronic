@@ -17,6 +17,7 @@ idf_component_register(
       system
       sensor
       output
+      remote_mqtt
 )
 
 # HTML-Datei einbinden (als binary)
