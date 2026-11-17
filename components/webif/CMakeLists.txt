@@ -18,6 +18,7 @@ idf_component_register(
       sensor
       output
       mqtt_interface
+      firmware_version
 )
 
 # HTML-Datei einbinden (als binary)

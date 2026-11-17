@@ -16,8 +16,11 @@
 #include "mqtt_data.h"
 #include "mqtt_interface.h"
 #include "system.h"
+#include "firmware_version.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_err.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,6 +38,7 @@ extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 
 /* --- Module globals ------------------------------------------------------ */
 static httpd_handle_t server = NULL;
+static const char *TAG = "webserver";
 
 /* --- Types --------------------------------------------------------------- */
 
@@ -535,11 +539,55 @@ static bool m_parse_mqtt_config_json(const char *json,
  */
 static esp_err_t m_get_handler_root(httpd_req_t *req)
 {
-   const uint32_t html_len = index_html_end - index_html_start;
+   static const char placeholder[] = "{{FIRMWARE_VERSION}}";
+   const size_t html_len = (size_t)(index_html_end - index_html_start);
+   const size_t placeholder_len = sizeof(placeholder) - 1u;
+   size_t placeholder_offset = 0u;
+   bool placeholder_found = false;
 
-   httpd_resp_set_type(req, "text/html");
-   httpd_resp_send(req, (const char *)index_html_start, html_len);
-   return ESP_OK;
+   for (size_t i = 0u; i + placeholder_len <= html_len; i++)
+   {
+      if (memcmp(&index_html_start[i], placeholder, placeholder_len) == 0)
+      {
+         placeholder_offset = i;
+         placeholder_found = true;
+         break;
+      }
+   }
+
+   if (!placeholder_found)
+   {
+      ESP_LOGE(TAG, "Firmware version placeholder not found in index.html");
+      return ESP_FAIL;
+   }
+
+   esp_err_t err = httpd_resp_set_type(req, "text/html");
+   if (err == ESP_OK)
+   {
+      err = httpd_resp_send_chunk(req, (const char *)index_html_start, placeholder_offset);
+   }
+   if (err == ESP_OK)
+   {
+      err = httpd_resp_send_chunk(req, FIRMWARE_VERSION_STRING, HTTPD_RESP_USE_STRLEN);
+   }
+   if (err == ESP_OK)
+   {
+      const size_t suffix_offset = placeholder_offset + placeholder_len;
+      err = httpd_resp_send_chunk(req,
+                                  (const char *)&index_html_start[suffix_offset],
+                                  html_len - suffix_offset);
+   }
+   if (err == ESP_OK)
+   {
+      err = httpd_resp_send_chunk(req, NULL, 0u);
+   }
+
+   if (err != ESP_OK)
+   {
+      ESP_LOGE(TAG, "Failed to send index.html: %s", esp_err_to_name(err));
+   }
+
+   return err;
 }
 
 /**

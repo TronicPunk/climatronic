@@ -26,4 +26,5 @@ idf_component_register(
       mqtt_interface
       timer
       esp_wifi
+      firmware_version
 )

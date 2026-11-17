@@ -31,6 +31,7 @@
 #include "webserver.h"
 #include "mqtt_interface.h"
 #include "menu.h"
+#include "firmware_version.h"
 
 #include "system_setup.h"
 #include "sensor_data.h"
@@ -39,15 +40,6 @@
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 #define PROJECT_NAME    "Climatronic" // char[33]
-
-#define VERSION_MAJOR   0  // software version
-#define VERSION_MINOR   01 // software minor version
-#define VERSION_RELEASE 0  // software release
-
-#define STR(s)          #s     // the C preprocessor need two steps
-#define XSTR(s)         STR(s) // to stringify a macro...
-#define VERSION_STRING  "V"XSTR(VERSION_MAJOR)"."XSTR(VERSION_MINOR)"r"XSTR(VERSION_RELEASE)
-
 
 /* -- Types --------------------------------------------------------------------------------------------------------- */
 
@@ -84,7 +76,7 @@ static void m_menu_main(void)
    // display main menu
    clr_scr();
    printf("------------------------------------------\r\n");
-   printf(" Climatronic Firmware V%d.%02dr%d / %s\r\n", VERSION_MAJOR, VERSION_MINOR, VERSION_RELEASE, __DATE__);
+   printf(" Climatronic Firmware %s / %s\r\n", FIRMWARE_VERSION_STRING, __DATE__);
    printf("------------------------------------------\r\n\n");
    printf(" [1]  System\r\n");
    printf(" [2]  Sensor values (%u sensors found)\r\n", u16_SensorCnt);
