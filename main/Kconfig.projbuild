@@ -17,3 +17,31 @@ menu "Example Configuration"
        default "clima-setup"
 
 endmenu
+
+menu "Climatronic MQTT"
+
+   config CLIMATRONIC_MQTT_BROKER_URI
+       string "MQTT broker URI"
+       default ""
+       help
+           For example mqtt://broker.example:1883 or mqtts://broker.example:8883.
+           Leave empty to disable MQTT. TLS uses the ESP certificate bundle.
+
+   config CLIMATRONIC_MQTT_USERNAME
+       string "MQTT username"
+       default ""
+
+   config CLIMATRONIC_MQTT_PASSWORD
+       string "MQTT password"
+       default ""
+
+   config CLIMATRONIC_MQTT_TOPIC_PREFIX
+       string "MQTT topic prefix"
+       default "climatronic"
+
+   config CLIMATRONIC_MQTT_PUBLISH_INTERVAL_MS
+       int "MQTT publish interval (ms)"
+       range 1000 3600000
+       default 5000
+
+endmenu

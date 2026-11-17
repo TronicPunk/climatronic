@@ -1,4 +1,14 @@
 dependencies:
+  espressif/mqtt:
+    component_hash: fb18bc3b65aa8c94693a9811ffc322cca8a65d92d5ec84983d3e385080e3969c
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.1.0
   idf:
     source:
       type: idf
@@ -11,7 +21,8 @@ dependencies:
     version: 1.11.0
 direct_dependencies:
 - espressif/mdns
+- espressif/mqtt
 - idf
-manifest_hash: eccf85ed97218dcc30fb0918ebb857c8fc97c477591f9e3264196bb473d12903
+manifest_hash: c64a05ae3688de434edc94cd920fb7018003e7d073c3c551f4db51a1fa79fc2c
 target: esp32
 version: 2.0.0
