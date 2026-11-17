@@ -16,7 +16,6 @@ idf_component_register(
       iic
       iic_mux
       iic_eeprom
-      device_data
       sensor
       BME280
       BME68x
@@ -24,6 +23,7 @@ idf_component_register(
       system
       output
       webif
+      remote_mqtt
       timer
       esp_wifi
 )

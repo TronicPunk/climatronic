@@ -11,7 +11,8 @@
 #include "system_setup.h"
 #include "eeprom_test.h"
 #include "system_data.h"
-#include "device_data.h"
+#include "mqtt_data.h"
+#include "wifi_data.h"
 #include "iic_eeprom.h"
 #include "inout.h"
 #include "timer.h"
@@ -28,6 +29,7 @@ static void m_menu_system(void);
 static void m_toggle_usens_en(void);
 static int32_t m_set_led(void);
 static int32_t m_setup_i2c_bus_freq(void);
+static int32_t m_mqtt_setup(void);
 static int32_t m_wifi_setup(void);
 static esp_err_t m_edit_string(char * const oac_String, const uint32_t ou32_Len, const uint32_t ou32_X, const uint32_t ou32_Y);
 static void m_bssid_to_string(const uint8_t * const opu8_BSSID, char * const oac_BSSID_String);
@@ -41,12 +43,13 @@ const T_Menu gt_MenuSystemSetup =
    MENU_MAGIC,       // menu structure identification
    &m_menu_system,   // show system setup menu
    NULL,             // menu exit function
-   6,                // number of menu entries
+   7,                // number of menu entries
    {
       (void *)&m_toggle_usens_en,         // toggle signal usens_en
       (void *)&m_set_led,                 // set LEDs
       (void *)&gt_MenuEepromTest,         // menu EEPROM test
       (void *)&m_setup_i2c_bus_freq,      // setup I2C bus frequency
+      (void *)&m_mqtt_setup,              // MQTT setup
       (void *)&m_wifi_setup,              // WIFI setup
       (void *)&system_sw_reset,           // ECU software reset
    }
@@ -67,8 +70,9 @@ static void m_menu_system(void)
    printf(" [2]  Set LED\r\n");
    printf(" [3]  Test EEPROM\r\n");
    printf(" [4]  Set I2C bus frequency\r\n");
-   printf(" [5]  WIFI Setup\r\n");
-   printf(" [6]  Reset\r\n\n");
+   printf(" [5]  MQTT Setup\r\n");
+   printf(" [6]  WIFI Setup\r\n");
+   printf(" [7]  Reset\r\n\n");
    printf("[ESC] return to previous menu\r\n");
 }
 
@@ -189,9 +193,119 @@ static int32_t m_set_led(void)
    return 1;
 }
 
+static int32_t m_mqtt_setup(void)
+{
+   T_mqtt_data t_MqttData;
+   char ac_String[128u];
+   esp_err_t t_Err;
+   uint8_t u8_Key = 0u;
+   bool q_SetupModified = false;
+
+   serial_clear_rx_buf(); // clear RX buffer
+   mqtt_data_get(&t_MqttData);
+
+   while (u8_Key != 0x1Bu)
+   {
+      clr_scr();
+      printf("------------------------------------------\r\n");
+      printf(" MQTT setup (NVM data)\r\n");
+      printf("------------------------------------------\r\n\n");
+      printf(" [1] edit broker URI   %s\r\n", t_MqttData.ac_BrokerUri);
+      printf(" [2] edit broker user  %s\r\n", t_MqttData.ac_BrokerUserName);
+      printf(" [3] edit broker PW    %s\r\n", t_MqttData.ac_BrokerUserPw);
+      printf(" [4] edit topic prefix %s\r\n", t_MqttData.ac_TopicPrefix);
+      printf(" [5] edit publish interval [500..60000] %5lu ms\r\n", t_MqttData.pt_MqttSetup->u32_PublishIntervalMs);
+      printf(" [6] edit outset timeout   [500..60000] %5lu ms\r\n\n", t_MqttData.pt_MqttSetup->u32_OutSetTimeoutMs);
+      printf("[ESC] terminate setup\r\n\n");
+
+      u8_Key = get_key();
+
+      if (u8_Key == '1')
+      {
+         t_Err = m_edit_string(ac_String, MQTT_BROKER_URI_MAX, 24u, 5u);
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_broker_uri(ac_String);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '2')
+      {
+         t_Err = m_edit_string(ac_String, MQTT_BROKER_USER_NAME_MAX, 24u, 6u);
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_broker_username(ac_String);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '3')
+      {
+         t_Err = m_edit_string(ac_String, MQTT_BROKER_USER_PW_MAX, 24u, 7u);
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_broker_userpw(ac_String);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '4')
+      {
+         t_Err = m_edit_string(ac_String, MQTT_TOPIC_PREFIX_MAX, 24u, 8u);
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_topic_prefix(ac_String);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '5')
+      {
+         uint32_t u32_PublishIntervalMs = t_MqttData.pt_MqttSetup->u32_PublishIntervalMs;
+         do
+         {
+            set_cursor(41u, 9u);
+            printf("     ");
+            set_cursor(41u, 9u);
+            t_Err = get_uint32(&u32_PublishIntervalMs, 60000uL, 10u);
+         }
+         while (((t_Err == ESP_OK) && (u32_PublishIntervalMs < 500u)) || (t_Err == ESP_ERR_INVALID_SIZE));
+
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_publish_interval(u32_PublishIntervalMs);
+            q_SetupModified = true;
+         }
+      }
+      if (u8_Key == '6')
+      {
+         uint32_t u32_OutSetTimeoutMs = t_MqttData.pt_MqttSetup->u32_OutSetTimeoutMs;
+         do
+         {
+            set_cursor(41u, 10u);
+            printf("     ");
+            set_cursor(41u, 10u);
+            t_Err = get_uint32(&u32_OutSetTimeoutMs, 60000uL, 10u);
+         }
+         while (((t_Err == ESP_OK) && (u32_OutSetTimeoutMs < 500u)) || (t_Err == ESP_ERR_INVALID_SIZE));
+
+         if (t_Err == ESP_OK)
+         {
+            mqtt_data_set_outset_timeout(u32_OutSetTimeoutMs);
+            q_SetupModified = true;
+         }
+      }
+
+      if (q_SetupModified == true)
+      {
+         mqtt_data_store();
+         q_SetupModified = false;
+      }
+   }
+
+   return 1;
+}
+
 static int32_t m_wifi_setup(void)
 {
-   T_device_data t_DeviceData;
+   T_wifi_data t_WiFiData;
    static const uint8_t au8_BSSID_Zero[WIFI_BSSID_SIZE] = { 0 };
    char ac_String[64u];
    char ac_BSSID[18u];
@@ -200,18 +314,18 @@ static int32_t m_wifi_setup(void)
    bool q_SetupModified = true;
 
    serial_clear_rx_buf(); // clear RX buffer
-   device_data_get(&t_DeviceData);
+   wifi_data_get(&t_WiFiData);
 
    while (u8_Key != 0x1Bu)
    {
-      m_bssid_to_string(t_DeviceData.au8_BSSID, ac_BSSID);
+      m_bssid_to_string(t_WiFiData.au8_BSSID, ac_BSSID);
 
       clr_scr();
       printf("------------------------------------------\r\n");
       printf(" WIFI setup (NVM data)\r\n");
       printf("------------------------------------------\r\n\n");
-      printf(" [1] edit hostname    %s\r\n", t_DeviceData.ac_HostName);
-      printf(" [2] edit WIFI SSID   %s\r\n", t_DeviceData.ac_WiFiSSID);
+      printf(" [1] edit hostname    %s\r\n", t_WiFiData.ac_HostName);
+      printf(" [2] edit WIFI SSID   %s\r\n", t_WiFiData.ac_WiFiSSID);
       printf(" [3] clear WIFI BSSID %s\r\n", ac_BSSID);
       printf(" [4] set  WIFI PW     ********\r\n");
       printf(" [5] scan WIFI APs for SSID\r\n\n");
@@ -241,7 +355,7 @@ static int32_t m_wifi_setup(void)
          t_Err = m_edit_string(ac_String, DEVICE_HOST_NAME_MAX, 23u, 5u);
          if (t_Err == ESP_OK)
          {
-            device_data_set_hostname(ac_String);
+            wifi_data_set_hostname(ac_String);
             q_SetupModified = true;
          }
       }
@@ -250,13 +364,13 @@ static int32_t m_wifi_setup(void)
          t_Err = m_edit_string(ac_String, WIFI_SSID_MAX, 23u, 6u);
          if (t_Err == ESP_OK)
          {
-            device_data_set_ssid(ac_String);
+            wifi_data_set_ssid(ac_String);
             q_SetupModified = true;
          }
       }
       if (u8_Key == '3')
       {
-         device_data_set_bssid(au8_BSSID_Zero);
+         wifi_data_set_bssid(au8_BSSID_Zero);
          q_SetupModified = true;
       }
       if (u8_Key == '4')
@@ -264,7 +378,7 @@ static int32_t m_wifi_setup(void)
          t_Err = m_edit_string(ac_String, WIFI_PASSWORD_MAX, 23u, 8u);
          if (t_Err == ESP_OK)
          {
-            device_data_set_wifipw(ac_String);
+            wifi_data_set_wifipw(ac_String);
             q_SetupModified = true;
          }
       }
@@ -274,15 +388,15 @@ static int32_t m_wifi_setup(void)
          t_Err = m_wifi_scan_aps(ac_String, au8_BSSID);
          if (t_Err == ESP_OK)
          {
-            device_data_set_bssid(au8_BSSID);
-            device_data_set_ssid(ac_String);
+            wifi_data_set_bssid(au8_BSSID);
+            wifi_data_set_ssid(ac_String);
             q_SetupModified = true;
          }
       }
 
       if (q_SetupModified == true)
       {
-         device_data_store();
+         wifi_data_store();
          q_SetupModified = false;
       }
 

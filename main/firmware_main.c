@@ -21,13 +21,15 @@
 #include "iic.h"
 #include "iic_mux.h"
 #include "iic_eeprom.h"
-#include "device_data.h"
+#include "wifi_data.h"
+#include "mqtt_data.h"
 #include "system_data.h"
 #include "sensor.h"
 #include "output.h"
 #include "timer.h"
 #include "wifi_connect.h"
 #include "webserver.h"
+#include "remote_mqtt.h"
 #include "menu.h"
 
 #include "system_setup.h"
@@ -94,7 +96,8 @@ static void m_menu_main(void)
 void app_main(void)
 {
    esp_err_t err;
-   T_device_data t_DeviceData;
+   T_wifi_data t_WiFiData;
+   T_mqtt_data t_MqttData;
 
    // force linkage of sensor components
    __force_link_bme280();
@@ -111,16 +114,23 @@ void app_main(void)
    ESP_ERROR_CHECK(nvs_flash_init());
    serial_init();
 
-   err = device_data_load();
+   err = wifi_data_load();
    if (err == ESP_FAIL)
    {
-      ESP_LOGI(TAG, "device_data error %d\r\n", err);
+      ESP_LOGI(TAG, "WiFi data error %d\r\n", err);
    }
-   device_data_get(&t_DeviceData);
+   wifi_data_get(&t_WiFiData);
+
+   err = mqtt_data_load();
+   if (err == ESP_FAIL)
+   {
+      ESP_LOGI(TAG, "MQTT data error %d\r\n", err);
+   }
+   mqtt_data_get(&t_MqttData);
 
    // init the web interface
-   wifi_connect(&t_DeviceData);
-   start_mdns_service(t_DeviceData.ac_HostName);
+   wifi_connect(&t_WiFiData);
+   start_mdns_service(t_WiFiData.ac_HostName);
    start_webserver();
 
    err = system_data_load();
@@ -139,6 +149,12 @@ void app_main(void)
    if (err != ESP_OK)
    {
       ESP_LOGI(TAG, "no sensor connected!\r\n", err);
+   }
+
+   err = remote_mqtt_start(&t_MqttData);
+   if (err != ESP_OK)
+   {
+      ESP_LOGE(TAG, "MQTT initialization failed: %s", esp_err_to_name(err));
    }
 
    while (true)

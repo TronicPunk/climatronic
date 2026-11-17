@@ -24,7 +24,7 @@ typedef struct
    T_system_data t_SystemData;   // system setup data
 } T_system_data_crc;
 
-_Static_assert(sizeof(T_system_data_crc) == NVM_DATA_SYSTEM_SIZE, "T_system_data_crc must be of size NVM_DATA_DEVICE_SIZE byte");
+_Static_assert(sizeof(T_system_data_crc) == NVM_DATA_SYSTEM_SIZE, "T_system_data_crc must be of size NVM_DATA_SYSTEM_SIZE byte");
 
 /* --- Module global variables --------------------------------------------- */
 

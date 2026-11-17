@@ -9,7 +9,7 @@
 #define WIFI_CONNECT_H
 
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
-#include "device_data.h"
+#include "wifi_data.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 
@@ -19,7 +19,7 @@
 
 /* -- Function Prototypes ------------------------------------------------------------------------------------------- */
 
-void wifi_connect(T_device_data * const opt_DeviceData);
+void wifi_connect(T_wifi_data * const opt_DeviceData);
 void wifi_reset(void);
 void start_mdns_service(const char* const oac_HostName);
 void stop_mdns_service(void);

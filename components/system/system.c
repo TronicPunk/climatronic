@@ -8,6 +8,7 @@
 /* -- Includes ------------------------------------------------------------------------------------------------------ */
 #include "nvs_flash.h"
 #include "wifi_connect.h"
+#include "remote_mqtt.h"
 #include "inout.h"
 #include "esp_system.h"
 
@@ -29,9 +30,10 @@
 //-----------------------------------------------------------------------------
 void system_sw_reset(void)
 {
+   remote_mqtt_stop();
    nvs_flash_deinit();
    // if we stop the webserver here we can't call this function from webserver context
-// stop_webserver();
+   // stop_webserver();
    stop_mdns_service();
    wifi_reset();
    io_set_led_off();

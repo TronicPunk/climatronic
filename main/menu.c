@@ -310,13 +310,13 @@ esp_err_t get_string(uint8_t * const opu8_String, uint32_t ou32_Size)
             u32_key_valid |= ((u8_Char == 'x') || (u8_Char == 'X'));
          }
       }
-      while ((u32_key_valid == false) && (u8_Char != '\r') && (u8_Char != '\b') && (u8_Char != ''));
+      while ((u32_key_valid == false) && (u8_Char != '\n') && (u8_Char != '\b') && (u8_Char != ''));
 
       if (u8_Char == '') // ESC
       {
          break;
       }
-      else if (u8_Char == '\r') // enter
+      else if (u8_Char == '\n') // enter
       {
          char * pc_RestStr;
 

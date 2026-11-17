@@ -12,7 +12,7 @@
 #include "sensor_api.h"
 #include "output.h"
 #include "system_data.h"
-#include "device_data.h"
+#include "wifi_data.h"
 #include "system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -650,31 +650,31 @@ static esp_err_t m_get_handler_wifi_scan(httpd_req_t *req)
 
 static esp_err_t m_get_handler_wifi_config(httpd_req_t *req)
 {
-   T_device_data device_data;
+   T_wifi_data t_WiFiData;
    char hostname[DEVICE_HOST_NAME_MAX * 6u + 1u];
    char ssid[WIFI_SSID_MAX * 6u + 1u];
    char bssid[18u] = "";
    char response[512u];
    int ret;
 
-   device_data_get(&device_data);
-   m_escape_wifi_ssid((const uint8_t *)device_data.ac_HostName,
-                      strlen(device_data.ac_HostName),
+   wifi_data_get(&t_WiFiData);
+   m_escape_wifi_ssid((const uint8_t *)t_WiFiData.ac_HostName,
+                      strlen(t_WiFiData.ac_HostName),
                       hostname,
                       sizeof(hostname));
-   m_escape_wifi_ssid((const uint8_t *)device_data.ac_WiFiSSID,
-                      strlen(device_data.ac_WiFiSSID),
+   m_escape_wifi_ssid((const uint8_t *)t_WiFiData.ac_WiFiSSID,
+                      strlen(t_WiFiData.ac_WiFiSSID),
                       ssid,
                       sizeof(ssid));
-   if (device_data_not_zero(device_data.au8_BSSID, WIFI_BSSID_SIZE))
+   if (wifi_data_not_zero(t_WiFiData.au8_BSSID, WIFI_BSSID_SIZE))
    {
       ret = snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     (unsigned int)device_data.au8_BSSID[0],
-                     (unsigned int)device_data.au8_BSSID[1],
-                     (unsigned int)device_data.au8_BSSID[2],
-                     (unsigned int)device_data.au8_BSSID[3],
-                     (unsigned int)device_data.au8_BSSID[4],
-                     (unsigned int)device_data.au8_BSSID[5]);
+                     (unsigned int)t_WiFiData.au8_BSSID[0],
+                     (unsigned int)t_WiFiData.au8_BSSID[1],
+                     (unsigned int)t_WiFiData.au8_BSSID[2],
+                     (unsigned int)t_WiFiData.au8_BSSID[3],
+                     (unsigned int)t_WiFiData.au8_BSSID[4],
+                     (unsigned int)t_WiFiData.au8_BSSID[5]);
       if ((ret <= 0) || ((size_t)ret >= sizeof(bssid)))
       {
          httpd_resp_send_500(req);
@@ -690,8 +690,8 @@ static esp_err_t m_get_handler_wifi_config(httpd_req_t *req)
                   hostname,
                   ssid,
                   bssid,
-                  (device_data.ac_WiFiPw[0] != '\0') ? "true" : "false",
-                  (device_data.ac_WiFiPw[0] == '\0') ? "true" : "false",
+                  (t_WiFiData.ac_WiFiPw[0] != '\0') ? "true" : "false",
+                  (t_WiFiData.ac_WiFiPw[0] == '\0') ? "true" : "false",
                   (unsigned int)DEVICE_HOST_NAME_MAX,
                   (unsigned int)WIFI_SSID_MAX,
                   (unsigned int)WIFI_PASSWORD_MAX);
@@ -1181,7 +1181,7 @@ static esp_err_t m_set_handler_wifi_config(httpd_req_t *req)
    uint8_t bssid[WIFI_BSSID_SIZE];
    bool open_network = false;
    size_t received = 0u;
-   T_device_data current_data;
+   T_wifi_data current_data;
 
    if ((req->content_len == 0u) || (req->content_len >= sizeof(body)))
    {
@@ -1199,7 +1199,7 @@ static esp_err_t m_set_handler_wifi_config(httpd_req_t *req)
       received += (size_t)ret;
    }
    body[received] = '\0';
-   device_data_get(&current_data);
+   wifi_data_get(&current_data);
 
    if (!m_parse_wifi_config_json(body,
                                  hostname, sizeof(hostname),
@@ -1221,20 +1221,20 @@ static esp_err_t m_set_handler_wifi_config(httpd_req_t *req)
       return ESP_ERR_INVALID_ARG;
    }
 
-   esp_err_t err = device_data_set_hostname(hostname);
+   esp_err_t err = wifi_data_set_hostname(hostname);
    if (err == ESP_OK)
    {
-      err = device_data_set_ssid(ssid);
+      err = wifi_data_set_ssid(ssid);
    }
    if (err == ESP_OK)
    {
-      err = device_data_set_bssid(bssid);
+      err = wifi_data_set_bssid(bssid);
    }
    if ((err == ESP_OK) && (open_network || (password[0] != '\0')))
    {
-      err = device_data_set_wifipw(password);
+      err = wifi_data_set_wifipw(password);
    }
-   if ((err == ESP_OK) && (device_data_store() != ESP_OK))
+   if ((err == ESP_OK) && (wifi_data_store() != ESP_OK))
    {
       err = ESP_FAIL;
    }

@@ -195,7 +195,7 @@ static void m_wifi_start_setup_ap(const bool wifi_already_started)
    io_set_led(STATUS_LED_WLAN, WIFI_STATUS_LED_NOACCESS);
 }
 
-void wifi_connect(T_device_data * const opt_DeviceData)
+void wifi_connect(T_wifi_data * const opt_WiFiData)
 {
    // create WIFI event group
    wifi_event_group = xEventGroupCreate();
@@ -231,20 +231,20 @@ void wifi_connect(T_device_data * const opt_DeviceData)
                                                        NULL,
                                                        &instance_got_ip));
    wifi_config_t wifi_config = { 0 };
-   const size_t ssid_len = strnlen(opt_DeviceData->ac_WiFiSSID, sizeof(wifi_config.sta.ssid));
+   const size_t ssid_len = strnlen(opt_WiFiData->ac_WiFiSSID, sizeof(wifi_config.sta.ssid));
    if (ssid_len == 0u)
    {
       ESP_LOGW(TAG, "No WiFi SSID configured; starting setup access point");
       m_wifi_start_setup_ap(false);
       return;
    }
-   memcpy(wifi_config.sta.ssid, opt_DeviceData->ac_WiFiSSID, ssid_len);
-   strncpy((char *)wifi_config.sta.password, opt_DeviceData->ac_WiFiPw, sizeof(wifi_config.sta.password));
+   memcpy(wifi_config.sta.ssid, opt_WiFiData->ac_WiFiSSID, ssid_len);
+   strncpy((char *)wifi_config.sta.password, opt_WiFiData->ac_WiFiPw, sizeof(wifi_config.sta.password));
    wifi_config.sta.password[sizeof(wifi_config.sta.password)-1u] = 0u;
-   if (device_data_not_zero(opt_DeviceData->au8_BSSID, WIFI_BSSID_SIZE))
+   if (wifi_data_not_zero(opt_WiFiData->au8_BSSID, WIFI_BSSID_SIZE))
    {
       wifi_config.sta.bssid_set = true;
-      memcpy(wifi_config.sta.bssid, opt_DeviceData->au8_BSSID, WIFI_BSSID_SIZE);
+      memcpy(wifi_config.sta.bssid, opt_WiFiData->au8_BSSID, WIFI_BSSID_SIZE);
    }
 
    wifi_station_enabled = true;

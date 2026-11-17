@@ -1,0 +1,14 @@
+idf_component_register(
+   SRCS
+      "mqtt_data.c"
+      "remote_mqtt.c"
+   INCLUDE_DIRS
+      "."
+   PRIV_REQUIRES
+      mqtt
+      mbedtls
+      iic_eeprom
+      nvm_data
+      sensor
+      output
+)

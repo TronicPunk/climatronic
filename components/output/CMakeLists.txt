@@ -1,12 +1,12 @@
 idf_component_register(
    SRCS
-      "output.c"
       "output_data.c"
+      "output.c"
    INCLUDE_DIRS
       "."
    PRIV_REQUIRES
-      nvm_data
       iic_eeprom
+      nvm_data
       inout
       esp_driver_gpio
       esp_driver_ledc

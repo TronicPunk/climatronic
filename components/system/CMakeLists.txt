@@ -1,14 +1,14 @@
 idf_component_register(
    SRCS
-      system_data.c
-      system.c
+      "system_data.c"
+      "system.c"
    INCLUDE_DIRS
       "."
    PRIV_REQUIRES
       iic_eeprom
       nvm_data
-      device_data
       nvs_flash
       inout
       webif
+      remote_mqtt
 )

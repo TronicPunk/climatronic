@@ -1,7 +1,7 @@
 idf_component_register(
    SRCS
-      "sensor.c"
       "sensor_data.c"
+      "sensor.c"
    INCLUDE_DIRS
       "."
    PRIV_REQUIRES

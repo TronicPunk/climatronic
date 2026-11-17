@@ -1,5 +1,6 @@
 idf_component_register(
    SRCS
+      "wifi_data.c"
       "wifi_connect.c"
       "webserver.c"
    INCLUDE_DIRS
@@ -10,7 +11,8 @@ idf_component_register(
       esp_timer
       nvs_flash
       mdns
-      device_data
+      iic_eeprom
+      nvm_data
       inout
       system
       sensor
