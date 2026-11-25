@@ -174,7 +174,7 @@ static void m_subscribe_output_commands(void)
       }
    }
 
-   len = snprintf(topic, sizeof(topic), "%s/outputs/alive", mpc_TopicPrefix);
+   len = snprintf(topic, sizeof(topic), "%s/outputs/alive/set", mpc_TopicPrefix);
    if ((len < 0) || ((size_t)len >= sizeof(topic)))
    {
       ESP_LOGE(TAG, "Output command topic exceeds buffer capacity");
@@ -194,8 +194,8 @@ static void m_handle_output_command(const char *topic, const size_t topic_len,
    char expected_topic[MQTT_TOPIC_MAX_LEN];
    int expected_len;
 
-   // check for topic <TOPIC_PREFIX>/outputs/alive value 0 or 1
-   expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/alive", mpc_TopicPrefix);
+   // check for topic <TOPIC_PREFIX>/outputs/alive/set value 0 or 1
+   expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/alive/set", mpc_TopicPrefix);
    if ((expected_len >= 0) && ((size_t)expected_len < sizeof(expected_topic)) &&
        ((size_t)expected_len == topic_len) && (memcmp(topic, expected_topic, topic_len) == 0))
    {
