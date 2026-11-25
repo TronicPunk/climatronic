@@ -36,7 +36,7 @@ Read-enabled outputs publish their current PWM value (0–1000) to
 `climacontrol/outputs/<output_name>/set`; send a decimal integer from 0 to 1000.
 The output alive timeout timer is reloaded with any valid output set command.
 When the timeout expires all write-enabled outputs are disabled. The output alive
-timeout subscribe to `climacontrol/outputs/alive`; send 1 will trigger a timeout reload event
+timeout subscribe to `climacontrol/outputs/alive/set`; send 1 will trigger a timeout reload event
 and keep the outputs active without the need of output set commands. Send 0 to disable
 all write-enabled outputs immediately.
 Remote output commands are accepted only when the physical output selector is in AUTO mode.
