@@ -18,6 +18,7 @@
 #include "timer.h"
 #include "system.h"
 #include "esp_wifi.h"
+#include "mqtt_interface.h"
 
 /* -- Defines ------------------------------------------------------------------------------------------------------- */
 
@@ -214,11 +215,18 @@ static int32_t m_mqtt_setup(void)
       printf(" [2] edit broker user  %s\r\n", t_MqttData.ac_BrokerUserName);
       printf(" [3] edit broker PW    %s\r\n", t_MqttData.ac_BrokerUserPw);
       printf(" [4] edit topic prefix %s\r\n", t_MqttData.ac_TopicPrefix);
-      printf(" [5] edit publish interval [500..60000] %5lu ms\r\n", t_MqttData.pt_MqttSetup->u32_PublishIntervalMs);
-      printf(" [6] edit outset timeout   [500..60000] %5lu ms\r\n\n", t_MqttData.pt_MqttSetup->u32_OutSetTimeoutMs);
+      printf(" [5] edit publish interval     [500..60000] %5lu ms\r\n", t_MqttData.pt_MqttSetup->u32_PublishIntervalMs);
+      printf(" [6] edit output alive timeout [500..60000] %5lu ms\r\n\n", t_MqttData.pt_MqttSetup->u32_OutputAliveTimeoutMs);
+      printf(" Output Alive Timeout: \r\n\n");
       printf("[ESC] terminate setup\r\n\n");
 
-      u8_Key = get_key();
+      while (!((u8_Key == 0x1Bu) || ((u8_Key >= '1') && (u8_Key <= '6'))))
+      {
+         set_cursor(24u, 12u);
+         printf("%5lu ms\r\n", mqtt_get_output_alive_timer());
+         delay_us(250000u);
+         u8_Key = get_key_nowait();
+      }
 
       if (u8_Key == '1')
       {
@@ -261,9 +269,9 @@ static int32_t m_mqtt_setup(void)
          uint32_t u32_PublishIntervalMs = t_MqttData.pt_MqttSetup->u32_PublishIntervalMs;
          do
          {
-            set_cursor(41u, 9u);
+            set_cursor(45u, 9u);
             printf("     ");
-            set_cursor(41u, 9u);
+            set_cursor(45u, 9u);
             t_Err = get_uint32(&u32_PublishIntervalMs, 60000uL, 10u);
          }
          while (((t_Err == ESP_OK) && (u32_PublishIntervalMs < 500u)) || (t_Err == ESP_ERR_INVALID_SIZE));
@@ -276,19 +284,19 @@ static int32_t m_mqtt_setup(void)
       }
       if (u8_Key == '6')
       {
-         uint32_t u32_OutSetTimeoutMs = t_MqttData.pt_MqttSetup->u32_OutSetTimeoutMs;
+         uint32_t u32_OutputAliveTimeoutMs = t_MqttData.pt_MqttSetup->u32_OutputAliveTimeoutMs;
          do
          {
-            set_cursor(41u, 10u);
+            set_cursor(45u, 10u);
             printf("     ");
-            set_cursor(41u, 10u);
-            t_Err = get_uint32(&u32_OutSetTimeoutMs, 60000uL, 10u);
+            set_cursor(45u, 10u);
+            t_Err = get_uint32(&u32_OutputAliveTimeoutMs, 60000uL, 10u);
          }
-         while (((t_Err == ESP_OK) && (u32_OutSetTimeoutMs < 500u)) || (t_Err == ESP_ERR_INVALID_SIZE));
+         while (((t_Err == ESP_OK) && (u32_OutputAliveTimeoutMs > 0u) && (u32_OutputAliveTimeoutMs < 500u)) || (t_Err == ESP_ERR_INVALID_SIZE));
 
          if (t_Err == ESP_OK)
          {
-            mqtt_data_set_outset_timeout(u32_OutSetTimeoutMs);
+            mqtt_data_set_output_alive_timeout(u32_OutputAliveTimeoutMs);
             q_SetupModified = true;
          }
       }
@@ -511,7 +519,7 @@ static int32_t m_setup_i2c_bus_freq(void)
          u8_I2cBusFreq = (u8_I2cBusFreq == I2C_BUS_FREQ_100K) ? I2C_BUS_FREQ_400K : I2C_BUS_FREQ_100K;
          system_data_set_i2c_freq(u32_I2cBus, u8_I2cBusFreq);
          system_data_store();
-         set_cursor(34u, 5u+u32_I2cBus);
+         set_cursor(35u, 5u+u32_I2cBus);
          printf("%s\n", as_I2cBusFreq[u8_I2cBusFreq]);
       }
 

@@ -21,8 +21,9 @@
 #include "timer.h"
 #include "inout.h"
 
-#define MQTT_TOPIC_MAX_LEN 128u
-#define MQTT_PAYLOAD_MAX_LEN 256u
+#define MQTT_PUBLISH_TASK_INTERVAL_MS  100u
+#define MQTT_TOPIC_MAX_LEN             128u
+#define MQTT_PAYLOAD_MAX_LEN           256u
 
 static const char *TAG = "mqtt_client";
 static esp_mqtt_client_handle_t mqtt_client;
@@ -30,6 +31,8 @@ static volatile bool mqtt_connected;
 static T_mqtt_data mt_MqttDataRuntime;
 static T_mqtt_data *mpt_MqttData;
 static TaskHandle_t mt_PublishTaskHandle;
+static uint32_t mu32_OutputAliveTimeoutMs;
+
 static char * mpc_TopicPrefix;                           // MQTT_TOPIC_PREFIX
 static char mac_StatusTopic[MQTT_TOPIC_PREFIX_MAX +8];   // MQTT_TOPIC_PREFIX + "/status" + '\0'
 
@@ -42,7 +45,7 @@ static void m_mqtt_publish_task(void *arg);
 static void m_subscribe_output_commands(void);
 static void m_handle_output_command(const char *topic, const size_t topic_len,
                                     const char *data, const size_t data_len);
-
+static void m_disable_outputs(void);
 static int m_format_float(char *buffer, const size_t size, const float value)
 {
    if (!isfinite(value) || (value == SENSOR_VALUE_INVALID))
@@ -148,15 +151,17 @@ static void m_publish_state(void)
 
 static void m_subscribe_output_commands(void)
 {
+   char topic[MQTT_TOPIC_MAX_LEN];
+   int len;
+
    for (uint32_t channel = 0u; channel < OUTPUT_NUM_CHANNEL_MAX; channel++)
    {
       T_out_channel_data setup;
-      char topic[MQTT_TOPIC_MAX_LEN];
 
       if ((output_get_setup(channel, &setup) == ESP_OK) &&
           ((setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u))
       {
-         const int len = snprintf(topic, sizeof(topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
+         len = snprintf(topic, sizeof(topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
          if ((len < 0) || ((size_t)len >= sizeof(topic)))
          {
             ESP_LOGE(TAG, "Output command topic exceeds buffer capacity");
@@ -168,20 +173,61 @@ static void m_subscribe_output_commands(void)
          }
       }
    }
+
+   len = snprintf(topic, sizeof(topic), "%s/outputs/alive", mpc_TopicPrefix);
+   if ((len < 0) || ((size_t)len >= sizeof(topic)))
+   {
+      ESP_LOGE(TAG, "Output command topic exceeds buffer capacity");
+   }
+   else
+   {
+     if (esp_mqtt_client_subscribe(mqtt_client, topic, 1) < 0)
+     {
+        ESP_LOGW(TAG, "Failed to subscribe to %s", topic);
+     }
+   }
 }
 
 static void m_handle_output_command(const char *topic, const size_t topic_len,
                                     const char *data, const size_t data_len)
 {
+   char expected_topic[MQTT_TOPIC_MAX_LEN];
+   int expected_len;
+
+   // check for topic <TOPIC_PREFIX>/outputs/alive value 0 or 1
+   expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/alive", mpc_TopicPrefix);
+   if ((expected_len >= 0) && ((size_t)expected_len < sizeof(expected_topic)) &&
+       ((size_t)expected_len == topic_len) && (memcmp(topic, expected_topic, topic_len) == 0))
+   {
+      if (data_len == 1)
+      {
+         if (*data == '1')
+         {
+            // output alive trigger: reload alive timer
+            mu32_OutputAliveTimeoutMs = mpt_MqttData->pt_MqttSetup->u32_OutputAliveTimeoutMs;
+         }
+         else if (*data == '0')
+         {
+            // disable MQTT controlled outputs immediately
+            mu32_OutputAliveTimeoutMs = 0u;
+            m_disable_outputs();
+         }
+         else
+         {
+            // unknown alive value, rejected
+         }
+      }
+      return;
+   }
+
    for (uint32_t channel = 0u; channel < OUTPUT_NUM_CHANNEL_MAX; channel++)
    {
       T_out_channel_data setup;
-      char expected_topic[MQTT_TOPIC_MAX_LEN];
       char value_text[16];
       char *end;
       long value;
       const esp_err_t err = output_get_setup(channel, &setup);
-      const int expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
+      expected_len = snprintf(expected_topic, sizeof(expected_topic), "%s/outputs/%s/set", mpc_TopicPrefix, setup.ac_OutName);
       if ((err != ESP_OK) || (expected_len < 0) || ((size_t)expected_len >= sizeof(expected_topic)) ||
           ((size_t)expected_len != topic_len) ||
           (memcmp(topic, expected_topic, topic_len) != 0))
@@ -227,7 +273,30 @@ static void m_handle_output_command(const char *topic, const size_t topic_len,
       {
          ESP_LOGE(TAG, "Failed to set output %lu", (unsigned long)channel);
       }
+      else
+      {
+         // reload output alive timer
+         mu32_OutputAliveTimeoutMs = mpt_MqttData->pt_MqttSetup->u32_OutputAliveTimeoutMs;
+      }
       return;
+   }
+}
+
+static void m_disable_outputs(void)
+{
+   if (output_get_mode() == OUTPUT_MODE_AUTO)
+   {
+      for (uint32_t channel = 0u; channel < OUTPUT_NUM_CHANNEL_MAX; channel++)
+      {
+         T_out_channel_data setup;
+         if (output_get_setup(channel, &setup) == ESP_OK)
+         {
+            if ((setup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u)
+            {
+               output_set_value(channel, 0u);
+            }
+         }
+      }
    }
 }
 
@@ -277,15 +346,39 @@ static void m_mqtt_event_handler(void *arg, esp_event_base_t event_base,
 static void m_mqtt_publish_task(void *arg)
 {
    (void)arg;
+   uint32_t u32_PublishIntervalMs = 0u;
+
    while (true)
    {
-      if (mqtt_connected)
+      if (u32_PublishIntervalMs > MQTT_PUBLISH_TASK_INTERVAL_MS)
       {
-         m_publish_state();
+         u32_PublishIntervalMs -= MQTT_PUBLISH_TASK_INTERVAL_MS;
       }
-      uint32_t interval = (mpt_MqttData != NULL)
-                              ? mpt_MqttData->pt_MqttSetup->u32_PublishIntervalMs : CONFIG_CLIMATRONIC_MQTT_PUBLISH_INTERVAL_MS;
-      vTaskDelay(pdMS_TO_TICKS(interval));
+      else
+      {
+         if (mqtt_connected)
+         {
+            m_publish_state();
+         }
+         u32_PublishIntervalMs = (mpt_MqttData != NULL) ?
+                                  mpt_MqttData->pt_MqttSetup->u32_PublishIntervalMs : CONFIG_CLIMATRONIC_MQTT_PUBLISH_INTERVAL_MS;
+      }
+
+      if (mu32_OutputAliveTimeoutMs > 0u)
+      {
+         if (mu32_OutputAliveTimeoutMs > MQTT_PUBLISH_TASK_INTERVAL_MS)
+         {
+            mu32_OutputAliveTimeoutMs -= MQTT_PUBLISH_TASK_INTERVAL_MS;
+         }
+         else
+         {
+            // output timeout: disable all outputs
+            mu32_OutputAliveTimeoutMs = 0u;
+            m_disable_outputs();
+         }
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(MQTT_PUBLISH_TASK_INTERVAL_MS));
    }
 }
 
@@ -296,6 +389,8 @@ esp_err_t mqtt_client_start(T_mqtt_data * const opt_MqttData)
       return ESP_ERR_INVALID_ARG;
    }
    mpt_MqttData = opt_MqttData;
+   mu32_OutputAliveTimeoutMs = mpt_MqttData->pt_MqttSetup->u32_OutputAliveTimeoutMs;
+
    if (opt_MqttData->ac_BrokerUri[0] == '\0')
    {
       mqtt_client_stop();
@@ -371,14 +466,16 @@ esp_err_t mqtt_client_start(T_mqtt_data * const opt_MqttData)
       return err;
    }
 
-   if (mt_PublishTaskHandle == NULL &&
-       xTaskCreate(m_mqtt_publish_task, "mqtt_publish", 4096u, NULL, 5u,
-                   &mt_PublishTaskHandle) != pdPASS)
+   if (mt_PublishTaskHandle == NULL)
    {
-      ESP_LOGE(TAG, "Failed to create MQTT publishing task");
-      mqtt_client_stop();
-      return ESP_ERR_NO_MEM;
+      if (xTaskCreate(m_mqtt_publish_task, "mqtt_publish", 4096u, NULL, 5u, &mt_PublishTaskHandle) != pdPASS)
+      {
+         ESP_LOGE(TAG, "Failed to create MQTT publishing task");
+         mqtt_client_stop();
+         return ESP_ERR_NO_MEM;
+      }
    }
+
    return ESP_OK;
 }
 
@@ -408,4 +505,9 @@ void mqtt_client_stop(void)
       (void)esp_mqtt_client_destroy(mqtt_client);
       mqtt_client = NULL;
    }
+}
+
+uint32_t mqtt_get_output_alive_timer(void)
+{
+   return mu32_OutputAliveTimeoutMs;
 }

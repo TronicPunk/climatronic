@@ -25,19 +25,23 @@ MQTT is disabled until a broker URI is configured in the Web UI's
 **MQTT konfigurieren** tab. The tab stores settings in the device EEPROM and
 applies them immediately. The broker URI may be empty to disable MQTT. Set the
 optional username/password, topic prefix, publish interval (500–60000 ms), and
-output set timeout (500–60000 ms; currently unused) there. Enable anonymous
+output alive timeout (0 = no timeout or 500–60000 ms timeout) there. Enable anonymous
 login to clear both username and password. Use `mqtts://` for TLS; the default
 ESP certificate bundle is used for broker certificate validation.
 
 With the default prefix `climacontrol`, remotely readable sensors publish
-JSON values to `climacontrol/sensors/<index>/state`. Read-enabled outputs
-publish their current PWM value (0–1000) to
-`climacontrol/outputs/<channel>/state`. Write-enabled outputs subscribe to
-`climacontrol/outputs/<channel>/set`; send a decimal integer from 0 to 1000.
-Indices and channels are zero-based. Remote output commands are accepted only
-when the physical output selector is in AUTO mode. Configure the Read and Write
-flags per sensor/output in the web interface. The ESP32 is an MQTT client; the
-broker itself runs separately.
+JSON values to `climacontrol/sensors/<sensor_name>/state`.
+Read-enabled outputs publish their current PWM value (0–1000) to
+`climacontrol/outputs/<output_name>/state`. Write-enabled outputs subscribe to
+`climacontrol/outputs/<output_name>/set`; send a decimal integer from 0 to 1000.
+The output alive timeout timer is reloaded with any valid output set command.
+When the timeout expires all write-enabled outputs are disabled. The output alive
+timeout subscribe to `climacontrol/outputs/alive`; send 1 will trigger a timeout reload event
+and keep the outputs active without the need of output set commands. Send 0 to disable
+all write-enabled outputs immediately.
+Remote output commands are accepted only when the physical output selector is in AUTO mode.
+Configure the Read and Write flags per sensor/output in the web interface.
+The ESP32 is an MQTT client; the broker itself runs separately.
 
 #### Important links:
 For more information, please refer to:

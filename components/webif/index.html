@@ -299,8 +299,9 @@
       <label for="mqttPublishInterval">Publish Interval (ms)</label>
       <input id="mqttPublishInterval" class="config-input" type="number" min="500" max="60000" step="1" required>
 
-      <label for="mqttOutputSetTimeout">Output Set Timeout (ms)</label>
+      <label for="mqttOutputSetTimeout">Output Alive Timeout (ms)</label>
       <input id="mqttOutputSetTimeout" class="config-input" type="number" min="500" max="60000" step="1" required>
+      <span class="wifi-help">0 = kein Timeout, sonst 500..60000 ms</span>
    </div>
    <div class="setup-actions">
       <button id="saveMqttConfigBtn" type="button" class="save-btn">Speichern</button>
@@ -828,12 +829,12 @@ async function saveMqttConfig() {
     message.textContent = 'Bitte Brokerdaten und ein gültiges Topic Prefix eingeben.';
     return;
   }
-  if (!Number.isInteger(publishIntervalMs) || publishIntervalMs < 500 || publishIntervalMs > 60000) {
+  if (!Number.isInteger(publishIntervalMs) || (publishIntervalMs < 500) || publishIntervalMs > 60000) {
     message.textContent = 'Publish-Intervall muss im Bereich 500 bis 60000 ms liegen.';
     return;
   }
-  if (!Number.isInteger(outputSetTimeoutMs) || outputSetTimeoutMs < 500 || outputSetTimeoutMs > 60000) {
-    message.textContent = 'Output Set Timeout muss im Bereich 500 bis 60000 ms liegen.';
+  if (!Number.isInteger(outputSetTimeoutMs) || ((outputSetTimeoutMs > 0) && (outputSetTimeoutMs < 500)) || outputSetTimeoutMs > 60000) {
+    message.textContent = 'Output Alive Timeout darf 0 sein oder muss im Bereich 500 bis 60000 ms liegen.';
     return;
   }
   if (!anonymous && (!username || (!password && !MqttPasswordSet))) {

@@ -308,14 +308,7 @@ static void m_output_task(TimerHandle_t pxTimer)
          }
          else if (mu8_OutputMode == OUTPUT_MODE_AUTO)
          {
-            if ((pt_Output->t_OutSetup.u8_OutType & OUTPUT_FLAG_REMOTE_WR) != 0u)
-            {
-               s32_OutputValue = pt_Output->s32_OutValueRequest;
-            }
-            else
-            {
-               s32_OutputValue = pt_Output->t_OutSetup.u16_OutValueDef;
-            }
+            s32_OutputValue = pt_Output->s32_OutValueRequest;
          }
          else
          {

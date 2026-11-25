@@ -9,5 +9,6 @@ esp_err_t mqtt_client_start(T_mqtt_data * const opt_MqttData);
 esp_err_t mqtt_client_restart(void);
 bool mqtt_client_is_connected(void);
 void mqtt_client_stop(void);
+uint32_t mqtt_get_output_alive_timer(void);
 
 #endif // MQTT_INTERFACE_H

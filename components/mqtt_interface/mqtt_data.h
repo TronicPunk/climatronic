@@ -22,9 +22,9 @@
 // MQTT data set
 typedef struct
 {
-   uint32_t u32_PublishIntervalMs;  // sensor and output data publish interval in milli seconds
-   uint32_t u32_OutSetTimeoutMs;    // output set timeout in milli seconds [500 ... 60000]
-   uint8_t u8_Reserved[20];         // reserved
+   uint32_t u32_PublishIntervalMs;        // sensor and output data publish interval in milli seconds
+   uint32_t u32_OutputAliveTimeoutMs;     // output set timeout in milli seconds [500 ... 60000]
+   uint8_t u8_Reserved[20];               // reserved
 } T_mqtt_setup;
 
 typedef struct
@@ -46,6 +46,6 @@ esp_err_t mqtt_data_set_broker_username(const char * const oac_BrokerUserName);
 esp_err_t mqtt_data_set_broker_userpw(const char * const oac_BrokerUserPw);
 esp_err_t mqtt_data_set_topic_prefix(const char * const oac_TopicPrefix);
 esp_err_t mqtt_data_set_publish_interval(const uint32_t ou32_PublishIntervalMs);
-esp_err_t mqtt_data_set_outset_timeout(const uint32_t ou32_OutSetTimeoutMs);
+esp_err_t mqtt_data_set_output_alive_timeout(const uint32_t ou32_OutputAliveTimeoutMs);
 
 #endif // MQTT_DATA_H

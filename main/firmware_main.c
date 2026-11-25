@@ -136,13 +136,11 @@ void app_main(void)
    {
       ESP_LOGI(TAG, "output_init error %d\r\n", err);
    }
-
    err = sensor_init_task();
    if (err != ESP_OK)
    {
       ESP_LOGI(TAG, "no sensor connected!\r\n", err);
    }
-
    err = mqtt_client_start(&t_MqttData);
    if (err != ESP_OK)
    {

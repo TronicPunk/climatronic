@@ -35,8 +35,8 @@ static const T_mqtt_data_nvm mt_MqttDataDefault =
 {
    .t_MqttSetup =
    {
-      .u32_PublishIntervalMs = 4000u,
-      .u32_OutSetTimeoutMs = 4000u,
+      .u32_PublishIntervalMs = 2000u,
+      .u32_OutputAliveTimeoutMs = 0u,
       .u8_Reserved = { 0x00u },
    },
    .ac_BrokerUri = "",
@@ -235,18 +235,18 @@ esp_err_t mqtt_data_set_publish_interval(const uint32_t ou32_PublishIntervalMs)
 }
 
 /**
- * @brief set MQTT output set timeout in milli seconds. Valid range is [500 ... 60000]
+ * @brief set MQTT output alive timeout in milli seconds. Valid range is [0, 500 ... 60000]
  */
-esp_err_t mqtt_data_set_outset_timeout(const uint32_t ou32_OutSetTimeoutMs)
+esp_err_t mqtt_data_set_output_alive_timeout(const uint32_t ou32_OutputAliveTimeoutMs)
 {
    esp_err_t t_Err = ESP_ERR_INVALID_ARG;
-   if ((ou32_OutSetTimeoutMs >= 500uL) && (ou32_OutSetTimeoutMs <= 60000uL))
+   if ((ou32_OutputAliveTimeoutMs == 0uL) || ((ou32_OutputAliveTimeoutMs >= 500uL) && (ou32_OutputAliveTimeoutMs <= 60000uL)))
    {
       T_mqtt_setup * pt_MqttSetup = &mt_MqttDataCrc.t_MqttData.t_MqttSetup;
 
-      if (pt_MqttSetup->u32_OutSetTimeoutMs != ou32_OutSetTimeoutMs)
+      if (pt_MqttSetup->u32_OutputAliveTimeoutMs != ou32_OutputAliveTimeoutMs)
       {
-         pt_MqttSetup->u32_OutSetTimeoutMs = ou32_OutSetTimeoutMs;
+         pt_MqttSetup->u32_OutputAliveTimeoutMs = ou32_OutputAliveTimeoutMs;
          mu8_NewData = 1u; // set new data flag
       }
 

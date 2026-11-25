@@ -74,7 +74,7 @@ static bool m_parse_mqtt_config_json(const char *json,
                                      char *topic_prefix,
                                      const size_t topic_prefix_size,
                                      uint32_t *publish_interval,
-                                     uint32_t *output_set_timeout,
+                                     uint32_t *output_alive_timeout,
                                      bool *anonymous);
 
 /* --- Implementation ------------------------------------------------------ */
@@ -408,7 +408,7 @@ static bool m_parse_mqtt_config_json(const char *json,
                                      char *topic_prefix,
                                      const size_t topic_prefix_size,
                                      uint32_t *publish_interval,
-                                     uint32_t *output_set_timeout,
+                                     uint32_t *output_alive_timeout,
                                      bool *anonymous)
 {
    const char *cursor = json;
@@ -483,7 +483,7 @@ static bool m_parse_mqtt_config_json(const char *json,
       else if (strcmp(key, "outputSetTimeoutMs") == 0)
       {
          field = 0x20u;
-         if (!m_json_parse_uint32(&cursor, output_set_timeout))
+         if (!m_json_parse_uint32(&cursor, output_alive_timeout))
          {
             return false;
          }
@@ -959,7 +959,7 @@ static esp_err_t m_get_handler_mqtt_config(httpd_req_t *req)
                              (mqtt_data.ac_BrokerUserPw[0] == '\0')) ? "true" : "false",
                             topic_prefix,
                             (unsigned long)mqtt_data.pt_MqttSetup->u32_PublishIntervalMs,
-                            (unsigned long)mqtt_data.pt_MqttSetup->u32_OutSetTimeoutMs,
+                            (unsigned long)mqtt_data.pt_MqttSetup->u32_OutputAliveTimeoutMs,
                             (unsigned int)MQTT_BROKER_URI_MAX,
                             (unsigned int)MQTT_BROKER_USER_NAME_MAX,
                             (unsigned int)MQTT_BROKER_USER_PW_MAX,
@@ -1530,7 +1530,7 @@ static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
    char password[MQTT_BROKER_USER_PW_MAX + 1u] = "";
    char topic_prefix[MQTT_TOPIC_PREFIX_MAX + 1u] = "";
    uint32_t publish_interval = 0u;
-   uint32_t output_set_timeout = 0u;
+   uint32_t output_alive_timeout = 0u;
    bool anonymous = false;
    bool topic_prefix_valid = true;
    size_t received = 0u;
@@ -1558,7 +1558,7 @@ static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
                                  username, sizeof(username),
                                  password, sizeof(password),
                                  topic_prefix, sizeof(topic_prefix),
-                                 &publish_interval, &output_set_timeout, &anonymous) ||
+                                 &publish_interval, &output_alive_timeout, &anonymous) ||
        (strnlen(broker_uri, sizeof(broker_uri)) > MQTT_BROKER_URI_MAX) ||
        (strnlen(username, sizeof(username)) > MQTT_BROKER_USER_NAME_MAX) ||
        (strnlen(password, sizeof(password)) > MQTT_BROKER_USER_PW_MAX) ||
@@ -1566,7 +1566,7 @@ static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
        (strnlen(topic_prefix, sizeof(topic_prefix)) > MQTT_TOPIC_PREFIX_MAX) ||
        (strchr(topic_prefix, '+') != NULL) || (strchr(topic_prefix, '#') != NULL) ||
        (publish_interval < 500u) || (publish_interval > 60000u) ||
-       (output_set_timeout < 500u) || (output_set_timeout > 60000u) ||
+       ((output_alive_timeout > 0u) && (output_alive_timeout < 500u)) || (output_alive_timeout > 60000u) ||
        (anonymous && ((username[0] != '\0') || (password[0] != '\0'))) ||
        (!anonymous && (username[0] == '\0')))
    {
@@ -1615,7 +1615,7 @@ static esp_err_t m_set_handler_mqtt_config(httpd_req_t *req)
    }
    if (err == ESP_OK)
    {
-      err = mqtt_data_set_outset_timeout(output_set_timeout);
+      err = mqtt_data_set_output_alive_timeout(output_alive_timeout);
    }
    if ((err == ESP_OK) && (mqtt_data_store() != ESP_OK))
    {
